@@ -1,5 +1,6 @@
 import { Command, CommanderError } from "commander";
 import { registerConfig } from "../commands/config";
+import { registerGroups } from "../commands/groups";
 import { VERSION } from "../version";
 import type { Ctx } from "./context";
 
@@ -15,7 +16,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerConfig(program, ctx);
   // registerUsers(program, ctx);   ← Task 10
   // registerPw(program, ctx);      ← Task 12
-  // registerGroups(program, ctx);  ← Task 9
+  registerGroups(program, ctx);
   // registerApps(program, ctx);    ← Task 13
   // registerFeatures(program, ctx); registerEventhooks(program, ctx); ← Task 14
   // registerMisc(program, ctx);    ← Task 15

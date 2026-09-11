@@ -1,6 +1,7 @@
 node_modules/
 dist/
 okta-dump*
+tests/tmp-*
 /*.json
 !/package.json
 !/tsconfig.json

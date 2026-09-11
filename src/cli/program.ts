@@ -11,6 +11,7 @@ import { registerOrg } from "../commands/org";
 import { registerPlatform } from "../commands/platform";
 import { registerPw } from "../commands/pw";
 import { registerRoles } from "../commands/roles";
+import { registerSchemas } from "../commands/schemas";
 import { registerTokens } from "../commands/tokens";
 import { registerUsers } from "../commands/users";
 import { registerUsersBulk } from "../commands/users-bulk";
@@ -42,6 +43,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerRoles(program, ctx, { users: usersCmd, groups: groupsCmd });
   registerPlatform(program, ctx);
   registerInlinehooks(program, ctx);
+  registerSchemas(program, ctx, usersCmd);
   registerMisc(program, ctx);
   return program;
 }

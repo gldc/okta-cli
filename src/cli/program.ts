@@ -4,6 +4,7 @@ import { registerConfig } from "../commands/config";
 import { registerEventhooks } from "../commands/eventhooks";
 import { registerFeatures } from "../commands/features";
 import { registerGroups } from "../commands/groups";
+import { registerInlinehooks } from "../commands/inlinehooks";
 import { registerLogs } from "../commands/logs";
 import { registerMisc } from "../commands/misc";
 import { registerOrg } from "../commands/org";
@@ -40,6 +41,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerOrg(program, ctx);
   registerRoles(program, ctx, { users: usersCmd, groups: groupsCmd });
   registerPlatform(program, ctx);
+  registerInlinehooks(program, ctx);
   registerMisc(program, ctx);
   return program;
 }

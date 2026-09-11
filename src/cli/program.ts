@@ -4,8 +4,11 @@ import { registerConfig } from "../commands/config";
 import { registerEventhooks } from "../commands/eventhooks";
 import { registerFeatures } from "../commands/features";
 import { registerGroups } from "../commands/groups";
+import { registerLogs } from "../commands/logs";
 import { registerMisc } from "../commands/misc";
+import { registerOrg } from "../commands/org";
 import { registerPw } from "../commands/pw";
+import { registerTokens } from "../commands/tokens";
 import { registerUsers } from "../commands/users";
 import { registerUsersBulk } from "../commands/users-bulk";
 import { CommunicationError, ExitError, OktaApiError } from "../okta/errors";
@@ -30,6 +33,9 @@ export function buildProgram(ctx: Ctx): Command {
   registerApps(program, ctx);
   registerFeatures(program, ctx);
   registerEventhooks(program, ctx);
+  registerLogs(program, ctx);
+  registerTokens(program, ctx);
+  registerOrg(program, ctx);
   registerMisc(program, ctx);
   return program;
 }

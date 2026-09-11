@@ -7,7 +7,7 @@ import { selectField } from "../lib/lookup";
 import type { OktaClient, Query } from "../okta/client";
 import { CommunicationError, ExitError, OktaApiError } from "../okta/errors";
 
-export interface ListOption { flags: string; param: string; description: string; required?: boolean; choices?: string[]; transform?: (v: string) => string }
+export interface ListOption { flags: string; param: string; description: string; required?: boolean; requiredForList?: boolean; choices?: string[]; transform?: (v: string) => string }
 export interface ResourceSpec {
   name: string; description: string; path: string; singular: string; nameField: string; defaultFields: string;
   lifecycle?: boolean; deletable?: boolean; replaceable?: boolean; creatable?: boolean; listKey?: string; listOptions?: ListOption[]; sortBy?: string;
@@ -24,11 +24,11 @@ export function lookupQuery(spec: ResourceSpec, opts: Record<string, any>): Quer
   return q;
 }
 
-function addListOptions(cmd: Command, spec: ResourceSpec): Command {
+function addListOptions(cmd: Command, spec: ResourceSpec, forList = false): Command {
   for (const lo of spec.listOptions ?? []) {
     const o = new Option(lo.flags, lo.description);
     if (lo.choices) o.choices(lo.choices);
-    if (lo.required) o.makeOptionMandatory();
+    if (lo.required || (forList && lo.requiredForList)) o.makeOptionMandatory();
     cmd.addOption(o);
   }
   return cmd;
@@ -40,7 +40,12 @@ export async function resourceList(client: OktaClient, spec: ResourceSpec, parti
   let items: any[] = await client.getAll(spec.path, { query, listKey: spec.listKey });
   if (partial) items = items.filter(selectField(spec.nameField, partial));
   const key = spec.sortBy ?? spec.nameField;
-  return items.sort((a, b) => String(getDotted(a, key) ?? "").toLowerCase().localeCompare(String(getDotted(b, key) ?? "").toLowerCase()));
+  return items.sort((a, b) => {
+    const av = getDotted(a, key);
+    const bv = getDotted(b, key);
+    if (typeof av === "number" && typeof bv === "number") return av - bv;
+    return String(av ?? "").toLowerCase().localeCompare(String(bv ?? "").toLowerCase());
+  });
 }
 
 export async function resourceGet(client: OktaClient, spec: ResourceSpec, nameOrId: string, query: Query = {}): Promise<any> {
@@ -54,10 +59,10 @@ export async function resourceGet(client: OktaClient, spec: ResourceSpec, nameOr
 
 export function defineResource(parent: Command, ctx: Ctx, spec: ResourceSpec): Command {
   const g = subgroup(parent, spec.name, spec.description);
-  const out = (cmd: Command) => addOutputOptions(addVerbose(addListOptions(cmd, spec)), spec.defaultFields);
+  const out = (cmd: Command, forList = false) => addOutputOptions(addVerbose(addListOptions(cmd, spec, forList)), spec.defaultFields);
 
   out(g.command("list").description(`List ${spec.singular}s (optional argument: substring of ${spec.nameField})`).argument("[partial_name]")
-    .option("-f, --filter <expr>", "Okta filter expression").option("-q, --query <q>", "Okta 'q' query"))
+    .option("-f, --filter <expr>", "Okta filter expression").option("-q, --query <q>", "Okta 'q' query"), true)
     .action(action(ctx, (client, opts, partial?: string) => {
       const query = lookupQuery(spec, opts);
       if (opts.filter) query.filter = opts.filter;

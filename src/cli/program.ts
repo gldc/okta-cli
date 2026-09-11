@@ -10,6 +10,7 @@ import { registerLogs } from "../commands/logs";
 import { registerMisc } from "../commands/misc";
 import { registerOrg } from "../commands/org";
 import { registerPlatform } from "../commands/platform";
+import { registerPolicies } from "../commands/policies";
 import { registerPw } from "../commands/pw";
 import { registerRoles } from "../commands/roles";
 import { registerSchemas } from "../commands/schemas";
@@ -48,6 +49,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerSchemas(program, ctx, usersCmd);
   registerGroupRules(groupsCmd, ctx);
   registerUserTypes(program, ctx);
+  registerPolicies(program, ctx);
   registerMisc(program, ctx);
   return program;
 }

@@ -7,7 +7,7 @@ import { selectField } from "../lib/lookup";
 import type { OktaClient, Query } from "../okta/client";
 import { CommunicationError, ExitError, OktaApiError } from "../okta/errors";
 
-export interface ListOption { flags: string; param: string; description: string; required?: boolean; choices?: string[] }
+export interface ListOption { flags: string; param: string; description: string; required?: boolean; choices?: string[]; transform?: (v: string) => string }
 export interface ResourceSpec {
   name: string; description: string; path: string; singular: string; nameField: string; defaultFields: string;
   lifecycle?: boolean; deletable?: boolean; replaceable?: boolean; creatable?: boolean; listKey?: string; listOptions?: ListOption[]; sortBy?: string;
@@ -20,7 +20,7 @@ const optKey = (flags: string) => {
 
 export function lookupQuery(spec: ResourceSpec, opts: Record<string, any>): Query {
   const q: Query = {};
-  for (const lo of spec.listOptions ?? []) { const v = opts[optKey(lo.flags)]; if (v !== undefined) q[lo.param] = v; }
+  for (const lo of spec.listOptions ?? []) { const v = opts[optKey(lo.flags)]; if (v !== undefined) q[lo.param] = lo.transform ? lo.transform(String(v)) : v; }
   return q;
 }
 

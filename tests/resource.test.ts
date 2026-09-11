@@ -9,7 +9,7 @@ import { startServer } from "./fixtures/server";
 let srv: ReturnType<typeof startServer>;
 afterEach(() => srv?.stop());
 
-const spec: ResourceSpec = { name: "zones", description: "Network zones", path: "/zones", singular: "network zone", nameField: "name", defaultFields: "id,status,type,name", lifecycle: true,
+const spec: ResourceSpec = { name: "test-zones", description: "Network zones", path: "/zones", singular: "network zone", nameField: "name", defaultFields: "id,status,type,name", lifecycle: true,
   listOptions: [{ flags: "-t, --type <type>", param: "type", description: "zone type" }] };
 const zones = [{ id: "z2", status: "ACTIVE", type: "IP", name: "Office" }, { id: "z1", status: "ACTIVE", type: "DYNAMIC", name: "Blocked" }];
 const notFound = { errorCode: "E0000007", errorSummary: "nf", errorCauses: [] };
@@ -29,16 +29,16 @@ describe("defineResource", () => {
       { method: "GET", path: "/api/v1/zones", body: zones },
     ]);
     const t = testCtx(srv.url);
-    await run(["zones", "list", "-t", "IP"], t);
+    await run(["test-zones", "list", "-t", "IP"], t);
     expect(srv.calls[0]!.query).toEqual({ type: "IP" });
     expect(t.out.at(-1)).toBe("z1  ACTIVE  DYNAMIC  Blocked  \nz2  ACTIVE  IP       Office   \n");
-    await run(["zones", "list", "off", "--output-fields", "id"], t);
+    await run(["test-zones", "list", "off", "--output-fields", "id"], t);
     expect(t.out.at(-1)).toBe("z2  \n");
-    await run(["zones", "get", "z1", "-j"], t);
+    await run(["test-zones", "get", "z1", "-j"], t);
     expect(JSON.parse(t.out.at(-1)!).id).toBe("z1");
-    await run(["zones", "get", "office", "--output-fields", "id"], t);
+    await run(["test-zones", "get", "office", "--output-fields", "id"], t);
     expect(t.out.at(-1)).toBe("z2  \n");
-    expect(await run(["zones", "get", "zzz"], t)).toBe(255);
+    expect(await run(["test-zones", "get", "zzz"], t)).toBe(255);
   });
 
   test("add / replace merge / delete / activate / deactivate", async () => {
@@ -52,16 +52,16 @@ describe("defineResource", () => {
       { method: "POST", path: "/api/v1/zones/z2/lifecycle/deactivate" },
     ]);
     const t = testCtx(srv.url);
-    await run(["zones", "add", "-b", '{"type":"IP"}', "-s", "name=New", "-j"], t);
+    await run(["test-zones", "add", "-b", '{"type":"IP"}', "-s", "name=New", "-j"], t);
     expect(srv.calls.at(-1)!.body).toEqual({ type: "IP", name: "New" });
-    await run(["zones", "replace", "z2", "-s", "name=Renamed"], t);
+    await run(["test-zones", "replace", "z2", "-s", "name=Renamed"], t);
     expect(srv.calls.at(-1)!.method).toBe("PUT");
     expect(srv.calls.at(-1)!.body).toEqual({ ...zones[0], name: "Renamed" });
-    await run(["zones", "delete", "office"], t);
+    await run(["test-zones", "delete", "office"], t);
     expect(t.out.at(-1)).toBe("network zone z2 (Office) deleted\n");
-    await run(["zones", "activate", "z2", "--output-fields", "id"], t);
+    await run(["test-zones", "activate", "z2", "--output-fields", "id"], t);
     expect(t.out.at(-1)).toBe("z2  \n");
-    await run(["zones", "deactivate", "z2"], t);
+    await run(["test-zones", "deactivate", "z2"], t);
     expect(t.out.at(-1)).toBe("network zone z2 (Office) deactivated\n");
   });
 });

@@ -7,6 +7,7 @@ import { registerGroups } from "../commands/groups";
 import { registerLogs } from "../commands/logs";
 import { registerMisc } from "../commands/misc";
 import { registerOrg } from "../commands/org";
+import { registerPlatform } from "../commands/platform";
 import { registerPw } from "../commands/pw";
 import { registerRoles } from "../commands/roles";
 import { registerTokens } from "../commands/tokens";
@@ -38,6 +39,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerTokens(program, ctx);
   registerOrg(program, ctx);
   registerRoles(program, ctx, { users: usersCmd, groups: groupsCmd });
+  registerPlatform(program, ctx);
   registerMisc(program, ctx);
   return program;
 }

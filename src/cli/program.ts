@@ -1,6 +1,7 @@
 import { Command, CommanderError } from "commander";
 import { registerConfig } from "../commands/config";
 import { registerGroups } from "../commands/groups";
+import { registerUsers } from "../commands/users";
 import { VERSION } from "../version";
 import type { Ctx } from "./context";
 
@@ -14,7 +15,7 @@ export function buildProgram(ctx: Ctx): Command {
     .configureOutput({ writeOut: (s) => ctx.io.out(s), writeErr: (s) => ctx.io.err(s) });
   program.command("version").description("Print version number and exit").action(() => ctx.io.out(VERSION + "\n"));
   registerConfig(program, ctx);
-  // registerUsers(program, ctx);   ← Task 10
+  registerUsers(program, ctx);
   // registerPw(program, ctx);      ← Task 12
   registerGroups(program, ctx);
   // registerApps(program, ctx);    ← Task 13

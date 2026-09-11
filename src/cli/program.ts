@@ -1,5 +1,6 @@
 import { Command, CommanderError } from "commander";
 import { registerApps } from "../commands/apps";
+import { registerAuthenticators, registerUserSecurity } from "../commands/authenticators";
 import { registerConfig } from "../commands/config";
 import { registerEventhooks } from "../commands/eventhooks";
 import { registerFeatures } from "../commands/features";
@@ -50,6 +51,8 @@ export function buildProgram(ctx: Ctx): Command {
   registerGroupRules(groupsCmd, ctx);
   registerUserTypes(program, ctx);
   registerPolicies(program, ctx);
+  registerAuthenticators(program, ctx);
+  registerUserSecurity(usersCmd, ctx);
   registerMisc(program, ctx);
   return program;
 }

@@ -38,6 +38,6 @@ export function registerPw(program: Command, ctx: Ctx): void {
         q["tempPassword"] = "false";
         await client.json("POST", `/users/${id}/lifecycle/expire_password`, { query: q });
       }
-      return `PASSWORD${expire ? "_EXPIRED" : ""}: ${expire ? pw : "********"}`;
+      return `PASSWORD${expire ? "_EXPIRED" : ""}: ${pw}`;
     }));
 }

@@ -8,8 +8,10 @@ import { registerMisc } from "../commands/misc";
 import { registerPw } from "../commands/pw";
 import { registerUsers } from "../commands/users";
 import { registerUsersBulk } from "../commands/users-bulk";
+import { CommunicationError, ExitError, OktaApiError } from "../okta/errors";
 import { VERSION } from "../version";
-import type { Ctx } from "./context";
+import { ExitSignal, type Ctx } from "./context";
+import { mapError } from "./options";
 
 export function buildProgram(ctx: Ctx): Command {
   const program = new Command("okta-cli")
@@ -38,6 +40,13 @@ export async function runCli(argv: string[], ctx: Ctx): Promise<number> {
     return 0;
   } catch (e) {
     if (e instanceof CommanderError) return e.exitCode;
+    if (e instanceof ExitSignal) return e.code;
+    // An error thrown outside any command's action() — e.g. a custom option parser like
+    // `int()` throwing while commander parses an argument, before any action() try/catch
+    // is even entered. Map the same documented error classes action() maps, the same way.
+    // Anything else re-throws unchanged (e.g. a test harness's own control-flow signal for
+    // a *mocked* io.exit — action() already turned a real io.exit into one of the above).
+    if (e instanceof ExitError || e instanceof CommunicationError || e instanceof OktaApiError) return mapError(ctx, e);
     throw e;
   }
 }

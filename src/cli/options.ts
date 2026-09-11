@@ -33,6 +33,24 @@ export function subgroup(parent: Command, name: string, description: string): Co
 
 export type Handler = (client: OktaClient, opts: Record<string, any>, ...args: string[]) => Promise<unknown> | unknown;
 
+// Maps the documented error classes to their output + exit code (Global Constraints).
+// Shared by `action()` (errors thrown from a command handler) and `runCli()` (errors
+// thrown by commander itself while parsing option arguments, e.g. a custom parser
+// like `int()` — those happen outside any `action()` call's try/catch).
+export function mapError(ctx: Ctx, e: unknown): number {
+  if (e instanceof ExitError) { ctx.io.err(`ERROR: ${e.message}\n`); return 255; }
+  if (e instanceof CommunicationError) { ctx.io.err(`COMMUNICATION_ERROR: ${e.message}\n`); return 255; }
+  if (e instanceof OktaApiError) {
+    ctx.io.out(`OKTA_API_ERROR: ${e.errorCode}: ${e.message}\n`);
+    for (const cause of e.errorCauses) for (const [k, v] of Object.entries(cause)) ctx.io.out(`${k}: ${v}\n`);
+    return 253;
+  }
+  const err = e as Error;
+  ctx.io.err(`${err.stack ?? String(err)}\n`);
+  ctx.io.err(`\n*****************************************************************************\nCRITICAL_ERROR: ${err.name ?? typeof e}\n\nPlease report at the issues page with details of what you did. Thank you!\n-> https://github.com/gldc/okta-cli/issues\n*****************************************************************************\n\n`);
+  return 254;
+}
+
 export function action(ctx: Ctx, handler: Handler, options: { client?: boolean } = {}) {
   return async (...cmdArgs: unknown[]): Promise<void> => {
     cmdArgs.pop(); // Command instance
@@ -44,17 +62,7 @@ export function action(ctx: Ctx, handler: Handler, options: { client?: boolean }
       const text = formatResult(rv, opts, (m) => ctx.io.err(m + "\n"));
       if (text !== undefined) ctx.io.out(text.endsWith("\n") ? text : text + "\n");
     } catch (e) {
-      if (e instanceof ExitError) { ctx.io.err(`ERROR: ${e.message}\n`); ctx.io.exit(255); }
-      if (e instanceof CommunicationError) { ctx.io.err(`COMMUNICATION_ERROR: ${e.message}\n`); ctx.io.exit(255); }
-      if (e instanceof OktaApiError) {
-        ctx.io.out(`OKTA_API_ERROR: ${e.errorCode}: ${e.message}\n`);
-        for (const cause of e.errorCauses) for (const [k, v] of Object.entries(cause)) ctx.io.out(`${k}: ${v}\n`);
-        ctx.io.exit(253);
-      }
-      const err = e as Error;
-      ctx.io.err(`${err.stack ?? String(err)}\n`);
-      ctx.io.err(`\n*****************************************************************************\nCRITICAL_ERROR: ${err.name ?? typeof e}\n\nPlease report at the issues page with details of what you did. Thank you!\n-> https://github.com/gldc/okta-cli/issues\n*****************************************************************************\n\n`);
-      ctx.io.exit(254);
+      ctx.io.exit(mapError(ctx, e));
     }
   };
 }

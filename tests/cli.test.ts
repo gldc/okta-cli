@@ -68,4 +68,10 @@ describe("cli framework", () => {
     const t = testCtx("http://127.0.0.1:1");
     expect(await runTest(["nonexistent"], t.ctx)).not.toBe(0);
   });
+
+  test("a custom option parser (int) throwing during commander's own argument parsing is still mapped to ERROR/255", async () => {
+    const t = testCtx("http://127.0.0.1:1");
+    expect(await runTest(["users", "list", "--colwidth", "abc"], t.ctx)).toBe(255);
+    expect(t.err.at(-1)).toBe("ERROR: Expected an integer, got 'abc'\n");
+  });
 });

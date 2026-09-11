@@ -1,6 +1,7 @@
 import { Command, CommanderError } from "commander";
 import { registerConfig } from "../commands/config";
 import { registerGroups } from "../commands/groups";
+import { registerPw } from "../commands/pw";
 import { registerUsers } from "../commands/users";
 import { registerUsersBulk } from "../commands/users-bulk";
 import { VERSION } from "../version";
@@ -18,7 +19,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerConfig(program, ctx);
   const usersCmd = registerUsers(program, ctx);
   registerUsersBulk(usersCmd, ctx);
-  // registerPw(program, ctx);      ← Task 12
+  registerPw(program, ctx);
   registerGroups(program, ctx);
   // registerApps(program, ctx);    ← Task 13
   // registerFeatures(program, ctx); registerEventhooks(program, ctx); ← Task 14

@@ -1,6 +1,8 @@
 import { Command, CommanderError } from "commander";
 import { registerApps } from "../commands/apps";
 import { registerConfig } from "../commands/config";
+import { registerEventhooks } from "../commands/eventhooks";
+import { registerFeatures } from "../commands/features";
 import { registerGroups } from "../commands/groups";
 import { registerPw } from "../commands/pw";
 import { registerUsers } from "../commands/users";
@@ -23,7 +25,8 @@ export function buildProgram(ctx: Ctx): Command {
   registerPw(program, ctx);
   registerGroups(program, ctx);
   registerApps(program, ctx);
-  // registerFeatures(program, ctx); registerEventhooks(program, ctx); ← Task 14
+  registerFeatures(program, ctx);
+  registerEventhooks(program, ctx);
   // registerMisc(program, ctx);    ← Task 15
   return program;
 }

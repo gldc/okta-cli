@@ -1,4 +1,5 @@
 import { Command, CommanderError } from "commander";
+import { registerConfig } from "../commands/config";
 import { VERSION } from "../version";
 import type { Ctx } from "./context";
 
@@ -11,7 +12,7 @@ export function buildProgram(ctx: Ctx): Command {
     .exitOverride()
     .configureOutput({ writeOut: (s) => ctx.io.out(s), writeErr: (s) => ctx.io.err(s) });
   program.command("version").description("Print version number and exit").action(() => ctx.io.out(VERSION + "\n"));
-  // registerConfig(program, ctx);  ← Task 8
+  registerConfig(program, ctx);
   // registerUsers(program, ctx);   ← Task 10
   // registerPw(program, ctx);      ← Task 12
   // registerGroups(program, ctx);  ← Task 9

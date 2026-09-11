@@ -6,6 +6,7 @@ import { registerEventhooks } from "../commands/eventhooks";
 import { registerFeatures } from "../commands/features";
 import { registerGroupRules } from "../commands/group-rules";
 import { registerGroups } from "../commands/groups";
+import { registerIdps } from "../commands/idps";
 import { registerInlinehooks } from "../commands/inlinehooks";
 import { registerLogs } from "../commands/logs";
 import { registerMisc } from "../commands/misc";
@@ -53,6 +54,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerPolicies(program, ctx);
   registerAuthenticators(program, ctx);
   registerUserSecurity(usersCmd, ctx);
+  registerIdps(program, ctx);
   registerMisc(program, ctx);
   return program;
 }

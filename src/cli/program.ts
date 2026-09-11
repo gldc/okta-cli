@@ -3,6 +3,7 @@ import { registerApps } from "../commands/apps";
 import { registerConfig } from "../commands/config";
 import { registerEventhooks } from "../commands/eventhooks";
 import { registerFeatures } from "../commands/features";
+import { registerGroupRules } from "../commands/group-rules";
 import { registerGroups } from "../commands/groups";
 import { registerInlinehooks } from "../commands/inlinehooks";
 import { registerLogs } from "../commands/logs";
@@ -13,6 +14,7 @@ import { registerPw } from "../commands/pw";
 import { registerRoles } from "../commands/roles";
 import { registerSchemas } from "../commands/schemas";
 import { registerTokens } from "../commands/tokens";
+import { registerUserTypes } from "../commands/user-types";
 import { registerUsers } from "../commands/users";
 import { registerUsersBulk } from "../commands/users-bulk";
 import { CommunicationError, ExitError, OktaApiError } from "../okta/errors";
@@ -44,6 +46,8 @@ export function buildProgram(ctx: Ctx): Command {
   registerPlatform(program, ctx);
   registerInlinehooks(program, ctx);
   registerSchemas(program, ctx, usersCmd);
+  registerGroupRules(groupsCmd, ctx);
+  registerUserTypes(program, ctx);
   registerMisc(program, ctx);
   return program;
 }

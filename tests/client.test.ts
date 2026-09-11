@@ -80,6 +80,17 @@ describe("OktaClient", () => {
     const c = new OktaClient("http://127.0.0.1:9", "tok", { sleep: noSleep });
     await expect(c.get("/users")).rejects.toBeInstanceOf(CommunicationError);
   });
+
+  test("getAuto returns objects as-is and paginates arrays", async () => {
+    srv = startServer([]);
+    srv.add({ method: "GET", path: "/api/v1/org", body: { id: "o", _links: {} } });
+    srv.add({ method: "GET", path: "/api/v1/things", handler: (_r, url) => url.searchParams.get("after")
+      ? Response.json([{ id: 2 }])
+      : Response.json([{ id: 1 }], { headers: { Link: `<${srv.url}/api/v1/things?after=1>; rel="next"` } }) });
+    const c = new OktaClient(srv.url, "tok", { sleep: noSleep });
+    expect(await c.getAuto("/org")).toEqual({ id: "o" });
+    expect(await c.getAuto("/things")).toEqual([{ id: 1 }, { id: 2 }]);
+  });
 });
 
 describe("helpers", () => {

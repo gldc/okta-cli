@@ -129,4 +129,26 @@ export class OktaClient {
     }
     return opts.max !== undefined ? out.slice(0, opts.max) : out;
   }
+
+  getAuto(path: string, opts?: RequestOptions): Promise<any>;
+  getAuto<T>(path: string, opts?: RequestOptions): Promise<T>;
+  async getAuto<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+    const rsp = await this.request("GET", path, opts);
+    const text = await rsp.text();
+    if (!text) return undefined as T;
+    const first = JSON.parse(text);
+    if (!Array.isArray(first)) return stripLinks(first) as T;
+    const out: unknown[] = first.map(stripLinks);
+    let next = parseNextLink(rsp.headers.get("link"));
+    let last: string | undefined;
+    while (next && next !== last && out.length) {
+      last = next;
+      const r = await this.request("GET", next);
+      const page = (await r.json()) as unknown[];
+      if (!Array.isArray(page) || page.length === 0) break;
+      out.push(...page.map(stripLinks));
+      next = parseNextLink(r.headers.get("link"));
+    }
+    return out as T;
+  }
 }

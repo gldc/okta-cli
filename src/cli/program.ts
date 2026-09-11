@@ -4,6 +4,7 @@ import { registerConfig } from "../commands/config";
 import { registerEventhooks } from "../commands/eventhooks";
 import { registerFeatures } from "../commands/features";
 import { registerGroups } from "../commands/groups";
+import { registerMisc } from "../commands/misc";
 import { registerPw } from "../commands/pw";
 import { registerUsers } from "../commands/users";
 import { registerUsersBulk } from "../commands/users-bulk";
@@ -27,7 +28,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerApps(program, ctx);
   registerFeatures(program, ctx);
   registerEventhooks(program, ctx);
-  // registerMisc(program, ctx);    ← Task 15
+  registerMisc(program, ctx);
   return program;
 }
 

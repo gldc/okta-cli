@@ -8,6 +8,7 @@ import { registerLogs } from "../commands/logs";
 import { registerMisc } from "../commands/misc";
 import { registerOrg } from "../commands/org";
 import { registerPw } from "../commands/pw";
+import { registerRoles } from "../commands/roles";
 import { registerTokens } from "../commands/tokens";
 import { registerUsers } from "../commands/users";
 import { registerUsersBulk } from "../commands/users-bulk";
@@ -29,13 +30,14 @@ export function buildProgram(ctx: Ctx): Command {
   const usersCmd = registerUsers(program, ctx);
   registerUsersBulk(usersCmd, ctx);
   registerPw(program, ctx);
-  registerGroups(program, ctx);
+  const groupsCmd = registerGroups(program, ctx);
   registerApps(program, ctx);
   registerFeatures(program, ctx);
   registerEventhooks(program, ctx);
   registerLogs(program, ctx);
   registerTokens(program, ctx);
   registerOrg(program, ctx);
+  registerRoles(program, ctx, { users: usersCmd, groups: groupsCmd });
   registerMisc(program, ctx);
   return program;
 }

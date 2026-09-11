@@ -48,7 +48,7 @@ const userFlags = (cmd: Command) => cmd
   .requiredOption("-u, --user <EXACT-MATCH>", "The user ID, or an exact match of the --user-lookup-field")
   .option("-f, --user-lookup-field <FIELDNAME>", "Matching is done against this profile field; default: 'login'.", "login");
 
-export function registerGroups(program: Command, ctx: Ctx): void {
+export function registerGroups(program: Command, ctx: Ctx): Command {
   const g = subgroup(program, "groups", "Group operations");
 
   addOutputOptions(addVerbose(g.command("list").description("List all defined groups").argument("[partial_name]")
@@ -91,4 +91,6 @@ export function registerGroups(program: Command, ctx: Ctx): void {
   addVerbose(g.command("clear").description("Remove all users from a group. This can take a while if the group is big.").argument("<name-or-id>")
     .option("-i, --id", "Use Okta group ID instead of the group name"))
     .action(action(ctx, groupsClear(ctx)));
+
+  return g;
 }

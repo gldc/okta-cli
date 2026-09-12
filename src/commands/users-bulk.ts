@@ -76,9 +76,14 @@ export function registerUsersBulk(users: Command, ctx: Ctx): void {
       const defaults = parseAssignments(opts.set);
       await mapConcurrent(rows, opts.workers, async (row, i) => {
         const idx = i + opts.jumpToIndex;
-        const { id, "profile.login": login, ...rest } = row;
-        const userId = (id ?? "").trim() || (login ?? "").trim();
+        // Pop only the field actually used as the lookup key (id preferred over profile.login),
+        // matching the Python behavior — the other field, if present, is left in the body.
+        const idTrim = (row.id ?? "").trim();
+        const useId = idTrim !== "";
+        const userId = useId ? idTrim : (row["profile.login"] ?? "").trim();
         if (!userId) { errors.push([idx, "missing id or profile.login column", null]); return; }
+        const key = useId ? "id" : "profile.login";
+        const { [key]: _used, ...rest } = row;
         const dotted = Object.fromEntries(Object.entries(rest).filter(([k]) => k.includes(".")));
         try { updated.push(await client.json("POST", `/users/${userId}`, { body: flatToNested(dotted, defaults) })); }
         catch (e) { errors.push(toErr(idx, e)); }

@@ -12,7 +12,7 @@ import { flattenSchemaProperties } from "./schemas";
 export const USER_FIELDS = "id,status,profile.login,profile.firstName,profile.lastName,profile.email";
 
 export interface AddUserParams {
-  fields: Record<string, string>;
+  fields: Record<string, string | null>;
   overrideFields?: Record<string, string>;
   profileFields?: Record<string, string>;
   groupIds?: string[];
@@ -31,7 +31,10 @@ export async function addUser(client: OktaClient, p: AddUserParams): Promise<any
   return client.json("POST", "/users", { query, body: flatToNested(dotted) });
 }
 
-export function usersUpdateBody(sets: string[], arraySets: string[], context?: string): Record<string, unknown> {
+// undefined means "no sets/array-sets produced anything to write" (context alone is not enough) —
+// mirrors parseBody's undefined-when-empty contract in lib/body.ts.
+export function usersUpdateBody(sets: string[], arraySets: string[], context?: string): Record<string, unknown> | undefined {
+  if (sets.length === 0 && arraySets.length === 0) return undefined;
   const fields: Record<string, unknown> = parseAssignments(sets);
   for (const [k, v] of Object.entries(parseAssignments(arraySets))) fields[k] = v.split(",").map((s) => s.trim());
   const prefixed = context ? Object.fromEntries(Object.entries(fields).map(([k, v]) => [`${context}.${k}`, v])) : fields;
@@ -149,7 +152,8 @@ export function registerUsers(program: Command, ctx: Ctx): Command {
     .action(action(ctx, async (client, opts, id) => {
       const targetId = await resolveUserId(client, id, opts.userLookupField);
       const setBody = usersUpdateBody(opts.set, opts.arraySet, opts.context);
-      const body = opts.fromJson !== undefined ? deepMerge(parseBody(opts.fromJson) as Record<string, unknown>, setBody) : setBody;
+      if (opts.fromJson === undefined && setBody === undefined) throw new ExitError("Provide --from-json and/or -s");
+      const body = opts.fromJson !== undefined ? deepMerge(parseBody(opts.fromJson) as Record<string, unknown>, setBody ?? {}) : setBody!;
       return client.json("POST", `/users/${targetId}`, { body });
     }));
 
@@ -159,12 +163,10 @@ export function registerUsers(program: Command, ctx: Ctx): Command {
     .option("-c, --context <prefix>", "Set a context (profile, credentials) to save typing")
     .option("--from-json <json|FILE:path>", "JSON body merged under -s/-S; FILE:<path> reads a file"))), USER_FIELDS)
     .action(action(ctx, async (client, opts, user) => {
-      if (opts.fromJson === undefined && opts.set.length === 0 && opts.arraySet.length === 0 && !opts.context) {
-        throw new ExitError("Provide --from-json and/or -s");
-      }
-      const id = await resolveUserId(client, user, opts.userLookupField);
       const setBody = usersUpdateBody(opts.set, opts.arraySet, opts.context);
-      let body: Record<string, unknown> = opts.fromJson !== undefined ? deepMerge(parseBody(opts.fromJson) as Record<string, unknown>, setBody) : setBody;
+      if (opts.fromJson === undefined && setBody === undefined) throw new ExitError("Provide --from-json and/or -s");
+      const id = await resolveUserId(client, user, opts.userLookupField);
+      let body: Record<string, unknown> = opts.fromJson !== undefined ? deepMerge(parseBody(opts.fromJson) as Record<string, unknown>, setBody ?? {}) : setBody!;
       if (opts.fromJson === undefined) {
         const existing = await client.get(`/users/${id}`);
         body = deepMerge(existing, body);

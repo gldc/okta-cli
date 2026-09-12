@@ -5,7 +5,7 @@ import { parseBody } from "../lib/body";
 import { deepMerge, getDotted, isPlainObject } from "../lib/dotted";
 import { selectField } from "../lib/lookup";
 import type { OktaClient, Query } from "../okta/client";
-import { CommunicationError, ExitError, OktaApiError } from "../okta/errors";
+import { ExitError, OktaApiError } from "../okta/errors";
 
 export interface ListOption { flags: string; param: string; description: string; required?: boolean; requiredForList?: boolean; choices?: string[]; transform?: (v: string) => string }
 export interface ResourceSpec {
@@ -51,7 +51,7 @@ export async function resourceList(client: OktaClient, spec: ResourceSpec, parti
 
 export async function resourceGet(client: OktaClient, spec: ResourceSpec, nameOrId: string, query: Query = {}): Promise<any> {
   try { return await client.get(`${spec.path}/${encodeURIComponent(nameOrId)}`); }
-  catch (e) { if (!(e instanceof OktaApiError) && !(e instanceof CommunicationError)) throw e; }
+  catch (e) { if (!(e instanceof OktaApiError)) throw e; }
   const matches = await resourceList(client, spec, nameOrId, query);
   if (matches.length > 1) throw new ExitError(`Name for ${spec.singular} must be unique. (found ${matches.length} matches).`);
   if (matches.length === 0) throw new ExitError(`No matching ${spec.singular} found.`);

@@ -13,13 +13,19 @@ export function configPath(env: NodeJS.ProcessEnv = process.env, platform: NodeJ
   return join(env.XDG_CONFIG_HOME ?? join(home, ".config"), "okta-cli", "config.json");
 }
 
+// A lone profile is the obvious default even if none was ever set explicitly (mirrors Python's
+// load_config/_check_config, which persisted this same inference).
+export function inferDefault(cfg: Config): void {
+  const names = Object.keys(cfg.profiles);
+  if (names.length === 1) cfg.default = names[0];
+}
+
 export async function loadConfig(path: string = configPath()): Promise<Config> {
   const file = Bun.file(path);
   if (!(await file.exists())) throw new ExitError("okta-cli was not configured. Please run with 'config new' command.");
   const cfg = (await file.json()) as Config;
   cfg.profiles ??= {};
-  const names = Object.keys(cfg.profiles);
-  if (names.length === 1) cfg.default = names[0];
+  inferDefault(cfg);
   return cfg;
 }
 

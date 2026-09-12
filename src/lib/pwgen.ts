@@ -6,8 +6,8 @@ export function generatePassword(numWords: number, lang = "en"): string[] {
 }
 
 export function buildPassphrase(words: string[], minLength: number): string {
-  let pw = "";
-  for (let i = 3; i < words.length; i++) {
+  let pw = words.join(" ");
+  for (let i = 3; i <= words.length; i++) {
     pw = words.slice(0, i).join(" ");
     if (pw.length >= minLength) break;
   }

@@ -37,6 +37,10 @@ describe("pw", () => {
     const generatedPw = (srv.calls.at(-2)!.body as any).credentials.password.value as string;
     expect(generatedPw.length).toBeGreaterThanOrEqual(20);
     expect(generatedPw.split(" ").length).toBeGreaterThanOrEqual(3);
+    await runTest(["pw", "set", "bob@x.com", "-g", "-m", "3"], t.ctx);
+    const shortGeneratedPw = (srv.calls.at(-2)!.body as any).credentials.password.value as string;
+    expect(shortGeneratedPw.length).toBeGreaterThan(0);
+    expect(shortGeneratedPw.split(" ").length).toBe(3);
     expect(await runTest(["pw", "set", "bob@x.com"], t.ctx)).toBe(255);
     expect(t.err.at(-1)).toBe("ERROR: Either use -s or -g!\n");
   });

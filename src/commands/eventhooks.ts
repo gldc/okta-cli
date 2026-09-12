@@ -16,7 +16,7 @@ export function eventHookBody(url: string, name: string, events: string[]): Reco
 const hookOpts = (cmd: Command) => cmd
   .requiredOption("-u, --url <url>", "The URL where the events will be sent to by Okta")
   .requiredOption("-n, --name <name>", "A short name (description) of the event hook")
-  .requiredOption("-e, --event <events>", "Event types (comma separated or multiple -e)", collect, []);
+  .requiredOption("-e, --event <events>", "Event types (comma separated or multiple -e)", collect);
 const getHook = (client: any, partial: string) => getOne(client, "eventHooks", partial, { selector: selectField("name", partial) });
 
 export function registerEventhooks(program: Command, ctx: Ctx): Command {

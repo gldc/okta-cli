@@ -1,7 +1,7 @@
 import type { Command } from "commander";
 import type { Ctx } from "../cli/context";
 import { action, subgroup } from "../cli/options";
-import { type Config, configPath, loadConfig, saveConfig } from "../config";
+import { type Config, configPath, inferDefault, loadConfig, saveConfig } from "../config";
 import { ExitError } from "../okta/errors";
 
 export function registerConfig(program: Command, ctx: Ctx): void {
@@ -23,12 +23,15 @@ export function registerConfig(program: Command, ctx: Ctx): void {
       const url = ask(opts.url, "Url").toLowerCase();
       const token = ask(opts.token, "Token");
       if (!url.startsWith("https://")) throw new ExitError("url must start with 'https://'");
-      // Avoid loadConfig here: with exactly one existing profile it infers a `default`,
-      // which would then get persisted as a side effect of adding an unrelated profile.
       const file = Bun.file(path());
       const cfg: Config = (await file.exists()) ? ((await file.json()) as Config) : { profiles: {} };
       cfg.profiles ??= {};
+      // Infer+persist a default from the state as it existed before this profile was added
+      // (a lone pre-existing profile becomes default), then again after adding it (a fresh
+      // file's first-ever profile becomes default) — matches loadConfig's inference exactly.
+      inferDefault(cfg);
       cfg.profiles[name] = { url, token };
+      inferDefault(cfg);
       await saveConfig(cfg, path());
       return `Profile '${name}' added.`;
     }, { client: false }));

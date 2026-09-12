@@ -84,6 +84,18 @@ describe("policies rules", () => {
     expect(JSON.parse(t.out.join("")).id).toBe("r2");
   });
 
+  test("rule: 502 on GET-by-id surfaces COMMUNICATION_ERROR instead of falling back to list search", async () => {
+    srv = startServer([
+      policyByIdRoute,
+      { method: "GET", path: "/api/v1/policies/pol1/rules/r1", status: 502, body: { errorSummary: "bad gateway" } },
+      { method: "GET", path: "/api/v1/policies/pol1/rules", body: [{ id: "r1", name: "catch-all", priority: 1 }] },
+    ]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["policies", "rule", "pol1", "r1"], t.ctx)).toBe(255);
+    expect(t.err.join("")).toContain("COMMUNICATION_ERROR");
+    expect(srv.calls.some((c) => c.path === "/api/v1/policies/pol1/rules")).toBe(false);
+  });
+
   test("rule-delete deletes and reports policy + rule", async () => {
     srv = startServer([
       policyByIdRoute,

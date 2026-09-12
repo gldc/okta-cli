@@ -27,6 +27,14 @@ describe("apps", () => {
     await runTest(["apps", "users", "Slack", "--output-fields", "credentials.userName"], t.ctx);
     expect(t.out.at(-1)).toBe("a  \nz  \n");
   });
+
+  test("users with default fields has no trailing empty column or warning", async () => {
+    srv = startServer([{ method: "GET", path: "/api/v1/apps/0oa2/users", body: [{ id: "u1", status: "ACTIVE", credentials: { userName: "a" } }] }, ...standardRoutes()]);
+    const t = testCtx(srv.url);
+    await runTest(["apps", "users", "Slack"], t.ctx);
+    expect(t.out.at(-1)).toBe("ACTIVE  u1  a  \n");
+    expect(t.err.join("")).not.toContain("WARNING");
+  });
   test("adduser/removeuser/addgroup/removegroup/lifecycle/delete", async () => {
     srv = startServer([
       { method: "POST", path: "/api/v1/apps/0oa2/users", body: { id: "00u00000000000000001", scope: "USER", status: "ACTIVE", credentials: { userName: "bob@x.com" } } },

@@ -71,7 +71,7 @@ export function registerApps(program: Command, ctx: Ctx): Command {
       return list.sort((a, b) => String(a.label).toLowerCase().localeCompare(String(b.label).toLowerCase()));
     }));
 
-  addOutputOptions(addVerbose(g.command("users").description("List all users for an application").argument("<app>")), "status,id,credentials.userName,")
+  addOutputOptions(addVerbose(g.command("users").description("List all users for an application").argument("<app>")), "status,id,credentials.userName")
     .action(action(ctx, async (client, _o, appArg) => {
       const app = await getApp(client, appArg);
       const rv: any[] = await client.getAll(`/apps/${app.id}/users`);

@@ -204,6 +204,11 @@ matching exactly:
   back to a login/search lookup instead of exiting with the Okta API error.
 - JSON output is UTF-8 and does not escape non-ASCII characters; 18.1.2 escaped them by
   default when no `-j` flag was given.
+- A `429` is retried up to 10 times, sleeping until `X-Rate-Limit-Reset`, then fails with
+  `COMMUNICATION_ERROR`; 18.1.2 retried forever. On rate-limited orgs, pass a lower
+  `-w`/`--workers` to `bulk-add`/`bulk-update`/`dump`.
+- `-f`/`--user-lookup-field` values other than `login` still probe `GET /users/{value}`
+  first before falling back to a profile-field search, same as 18.1.2.
 
 ## References
 

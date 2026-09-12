@@ -55,6 +55,14 @@ describe("groups rules", () => {
     });
   });
 
+  test("add without -g/--group errors and makes no HTTP call", async () => {
+    srv = startServer([{ method: "POST", path: "/api/v1/groups/rules", body: rule }]);
+    const t = testCtx(srv.url);
+    const code = await runTest(["groups", "rules", "add", "-n", "eng-rule", "-e", "true"], t.ctx);
+    expect(code).not.toBe(0);
+    expect(srv.calls.length).toBe(0);
+  });
+
   test("delete --remove-users sends removeUsers query", async () => {
     srv = startServer([
       { method: "GET", path: /^\/api\/v1\/groups\/rules\/[^/]+$/, status: 404, body: notFound },

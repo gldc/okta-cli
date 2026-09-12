@@ -31,6 +31,22 @@ describe("users update/replace/profile/schema-check", () => {
     expect(t.err.at(-1)).toBe("ERROR: Provide --from-json and/or -s\n");
   });
 
+  test("replace with only -c (no -s/-S) errors and makes no HTTP call", async () => {
+    srv = startServer([{ method: "GET", path: "/api/v1/users/00u00000000000000001", body: { id: "00u00000000000000001" } }]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["users", "replace", "00u00000000000000001", "-c", "profile"], t.ctx)).toBe(255);
+    expect(t.err.at(-1)).toBe("ERROR: Provide --from-json and/or -s\n");
+    expect(srv.calls.length).toBe(0);
+  });
+
+  test("update with no flags at all errors and makes no HTTP call", async () => {
+    srv = startServer([{ method: "POST", path: "/api/v1/users/00u00000000000000001", body: { ok: 1 } }]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["users", "update", "00u00000000000000001"], t.ctx)).toBe(255);
+    expect(t.err.at(-1)).toBe("ERROR: Provide --from-json and/or -s\n");
+    expect(srv.calls.length).toBe(0);
+  });
+
   test("profile: rows sorted by field, arrays JSON-stringified", async () => {
     srv = startServer([
       { method: "GET", path: "/api/v1/users/00u00000000000000001", body: { id: "00u00000000000000001", profile: { login: "bob@x.com", zeta: "z", alpha: "a", tags: ["a", "b"] } } },

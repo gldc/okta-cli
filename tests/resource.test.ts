@@ -44,6 +44,7 @@ describe("defineResource", () => {
   test("add / replace merge / delete / activate / deactivate", async () => {
     srv = startServer([
       { method: "GET", path: "/api/v1/zones/z2", body: zones[0] },
+      { method: "GET", path: "/api/v1/zones/office", status: 404, body: notFound },
       { method: "GET", path: "/api/v1/zones", body: zones },
       { method: "POST", path: "/api/v1/zones", body: { id: "z9", name: "New" } },
       { method: "PUT", path: "/api/v1/zones/z2", body: { ...zones[0], name: "Renamed" } },
@@ -63,5 +64,16 @@ describe("defineResource", () => {
     expect(t.out.at(-1)).toBe("z2  \n");
     await run(["test-zones", "deactivate", "z2"], t);
     expect(t.out.at(-1)).toBe("network zone z2 (Office) deactivated\n");
+  });
+
+  test("get by id: 502 surfaces COMMUNICATION_ERROR instead of falling back to list search", async () => {
+    srv = startServer([
+      { method: "GET", path: "/api/v1/zones/z1", status: 502, body: { errorSummary: "bad gateway" } },
+      { method: "GET", path: "/api/v1/zones", body: zones },
+    ]);
+    const t = testCtx(srv.url);
+    expect(await run(["test-zones", "get", "z1"], t)).toBe(255);
+    expect(t.err.join("")).toContain("COMMUNICATION_ERROR");
+    expect(srv.calls.length).toBe(1);
   });
 });

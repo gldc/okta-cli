@@ -22,6 +22,19 @@ export function parseNextLink(header: string | null): string | undefined {
   return undefined;
 }
 
+// A page's next-page hint: a Link header, falling back to a body `_links.next.href`
+// (some list endpoints, e.g. roles/resource-sets/assignees, only expose the latter).
+function nextLinkFallback(linkHeader: string | null, raw: unknown): string | undefined {
+  return parseNextLink(linkHeader) ?? (isPlainObject(raw) ? (raw as any)._links?.next?.href : undefined);
+}
+
+// Mirrors json()'s empty-body guard: a 200 with an empty body on a list endpoint is `[]`,
+// not a JSON parse error.
+async function readJsonPage(rsp: Response): Promise<unknown> {
+  const text = await rsp.text();
+  return text.length === 0 ? [] : JSON.parse(text);
+}
+
 export function stripLinks<T extends object>(v: T[]): Omit<T, "_links">[];
 export function stripLinks<T extends object>(v: T): Omit<T, "_links">;
 export function stripLinks(v: unknown): unknown;
@@ -118,12 +131,12 @@ export class OktaClient {
     let rsp = await this.request("GET", path, opts);
     let lastUrl: string | undefined;
     for (;;) {
-      const raw = await rsp.json();
+      const raw = await readJsonPage(rsp);
       const page = (opts.listKey ? (raw as Record<string, unknown>)[opts.listKey] : raw) as T[] | undefined;
       if (!Array.isArray(page) || page.length === 0) break;
       out.push(...((page as unknown[]).map(stripLinks) as T[]));
       if (opts.max !== undefined && out.length >= opts.max) break;
-      const next = parseNextLink(rsp.headers.get("link")) ?? (isPlainObject(raw) ? (raw as any)._links?.next?.href : undefined);
+      const next = nextLinkFallback(rsp.headers.get("link"), raw);
       if (!next || next === lastUrl) break;
       lastUrl = next;
       rsp = await this.request("GET", next);
@@ -140,15 +153,15 @@ export class OktaClient {
     const first = JSON.parse(text);
     if (!Array.isArray(first)) return stripLinks(first) as T;
     const out: unknown[] = first.map(stripLinks);
-    let next = parseNextLink(rsp.headers.get("link"));
+    let next = nextLinkFallback(rsp.headers.get("link"), first);
     let last: string | undefined;
     while (next && next !== last && out.length) {
       last = next;
       const r = await this.request("GET", next);
-      const page = (await r.json()) as unknown[];
+      const page = (await readJsonPage(r)) as unknown[];
       if (!Array.isArray(page) || page.length === 0) break;
       out.push(...page.map(stripLinks));
-      next = parseNextLink(r.headers.get("link"));
+      next = nextLinkFallback(r.headers.get("link"), page);
     }
     return out as T;
   }

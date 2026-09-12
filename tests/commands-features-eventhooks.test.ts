@@ -66,4 +66,12 @@ describe("eventhooks", () => {
     await runTest(["eventhooks", "delete", "audit"], t.ctx);
     expect(t.out.at(-1)).toBe("event hook eh1 (audit-forwarder) deleted\n");
   });
+
+  test("add without -e/--event errors and makes no HTTP call", async () => {
+    srv = startServer([{ method: "POST", path: "/api/v1/eventHooks", body: hooks[0] }]);
+    const t = testCtx(srv.url);
+    const code = await runTest(["eventhooks", "add", "-u", "https://h", "-n", "x"], t.ctx);
+    expect(code).not.toBe(0);
+    expect(srv.calls.length).toBe(0);
+  });
 });

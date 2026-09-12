@@ -39,9 +39,20 @@ describe("users bulk", () => {
     expect(await runTest(["users", "bulk-update", f, "-s", "profile.dept=X", "-w", "2", "-i", "0"], t.ctx)).toBe(0);
     const paths = srv.calls.map((c) => c.path).sort();
     expect(paths).toEqual(["/api/v1/users/00u1", "/api/v1/users/b@x"]);
-    expect(srv.calls.find((c) => c.path.endsWith("00u1"))!.body).toEqual({ profile: { title: "Eng", dept: "X" } });
+    expect(srv.calls.find((c) => c.path.endsWith("00u1"))!.body).toEqual({ profile: { login: "a@x", title: "Eng", dept: "X" } });
     expect(t.out.join("")).toContain("   2 updated");
     const errors = await Bun.file("okta-bulk-update-20260102_030405-errors.json").json();
     expect(errors).toEqual([[2, "missing id or profile.login column", null]]);
+  });
+
+  test("bulk-update keyed by id keeps profile.login in the body", async () => {
+    const f = `${import.meta.dir}/tmp-upd-idlogin.csv`;
+    await Bun.write(f, "id,profile.login,profile.title\n00u9,c@x,Sales\n");
+    srv = startServer([{ method: "POST", path: "/api/v1/users/00u9", body: { ok: true } }]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["users", "bulk-update", f, "-w", "1"], t.ctx)).toBe(0);
+    expect(srv.calls[0]!.path).toBe("/api/v1/users/00u9");
+    expect(srv.calls[0]!.body).toEqual({ profile: { login: "c@x", title: "Sales" } });
+    rmSync(f);
   });
 });

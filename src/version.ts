@@ -1,1 +1,3 @@
-export const VERSION = "19.0.0";
+import pkg from "../package.json";
+
+export const VERSION = pkg.version;

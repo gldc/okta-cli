@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { defaultCtx } from "./cli/context";
 import { runCli } from "./cli/program";
 

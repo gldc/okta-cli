@@ -22,7 +22,7 @@ export function toSortedJson(value: unknown): string {
 }
 
 export function toYaml(value: unknown): string {
-  return yamlStringify(value, { indent: 2 });
+  return yamlStringify(value, { indent: 2, sortMapEntries: true });
 }
 
 function asRows(v: unknown): Record<string, unknown>[] {
@@ -43,6 +43,8 @@ export function toCsv(rowsIn: unknown, dialect = "excel"): string {
   return Papa.unparse({ fields, data }, {
     delimiter: dialect === "excel-tab" ? "\t" : ",",
     newline: dialect === "unix" ? "\n" : "\r\n",
+    // Python's csv "unix" dialect is QUOTE_ALL; excel/excel-tab only quote when needed.
+    quotes: dialect === "unix",
   }) + (dialect === "unix" ? "\n" : "\r\n");
 }
 

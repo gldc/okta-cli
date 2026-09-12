@@ -5,7 +5,7 @@ import { parseBody } from "../lib/body";
 import { deepMerge, isPlainObject } from "../lib/dotted";
 import { selectField } from "../lib/lookup";
 import type { OktaClient } from "../okta/client";
-import { CommunicationError, ExitError, OktaApiError } from "../okta/errors";
+import { ExitError, OktaApiError } from "../okta/errors";
 import { defineResource, resourceGet, type ResourceSpec } from "./resource";
 
 export const POLICY_TYPES = ["OKTA_SIGN_ON", "PASSWORD", "MFA_ENROLL", "IDP_DISCOVERY", "ACCESS_POLICY", "PROFILE_ENROLLMENT", "POST_AUTH_SESSION", "ENTITY_RISK", "CONTINUOUS_ACCESS"];
@@ -27,7 +27,7 @@ async function getRule(client: OktaClient, policyId: string, ruleArg: string): P
   try {
     return await client.get(`/policies/${policyId}/rules/${encodeURIComponent(ruleArg)}`);
   } catch (e) {
-    if (!(e instanceof OktaApiError) && !(e instanceof CommunicationError)) throw e;
+    if (!(e instanceof OktaApiError)) throw e;
   }
   const rules: any[] = await client.getAll(`/policies/${policyId}/rules`);
   const matches = rules.filter(selectField("name", ruleArg));

@@ -44,6 +44,21 @@ describe("OktaClient", () => {
     expect(srv.calls.length).toBe(2);
   });
 
+  test("getAll treats a 200 with an empty body as an empty page instead of throwing", async () => {
+    srv = startServer([{ method: "GET", path: "/api/v1/empty", handler: () => new Response("", { status: 200 }) }]);
+    const c = new OktaClient(srv.url, "tok", { sleep: noSleep });
+    expect(await c.getAll("/empty")).toEqual([]);
+  });
+
+  test("getAuto's next-page fetch treats a 200 with an empty body as an empty page instead of throwing", async () => {
+    srv = startServer([]);
+    srv.add({ method: "GET", path: "/api/v1/things2", handler: (_r, url) => url.searchParams.get("after")
+      ? new Response("", { status: 200 })
+      : Response.json([{ id: 1 }], { headers: { Link: `<${srv.url}/api/v1/things2?after=1>; rel="next"` } }) });
+    const c = new OktaClient(srv.url, "tok", { sleep: noSleep });
+    expect(await c.getAuto("/things2")).toEqual([{ id: 1 }]);
+  });
+
   test("getAll honours max and listKey", async () => {
     srv = startServer([{ method: "GET", path: "/api/v1/domains", body: { domains: [{ id: 1 }, { id: 2 }, { id: 3 }] } }]);
     const c = new OktaClient(srv.url, "tok", { sleep: noSleep });

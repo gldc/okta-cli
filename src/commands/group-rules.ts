@@ -17,7 +17,7 @@ export function registerGroupRules(groupsCmd: Command, ctx: Ctx): void {
 
   addOutputOptions(addVerbose(g.command("add").description("Create a group rule")
     .requiredOption("-n, --name <name>").requiredOption("-e, --expression <okta-expression>")
-    .requiredOption("-g, --group <groupId>", "target group id, repeatable", collect, [])
+    .requiredOption("-g, --group <groupId>", "target group id, repeatable", collect)
     .option("--exclude-user <userId>", "user id to exclude from the rule, repeatable", collect, [])), GROUP_RULES.defaultFields)
     .action(action(ctx, (client, opts) => client.json("POST", "/groups/rules", { body: groupRuleBody(opts as Parameters<typeof groupRuleBody>[0]) })));
 

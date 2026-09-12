@@ -4,7 +4,7 @@ import type { OktaClient } from "../okta/client";
 import { CommunicationError, ExitError, OktaApiError } from "../okta/errors";
 import type { Ctx } from "./context";
 
-export const collect = (v: string, prev: string[]): string[] => [...prev, v];
+export const collect = (v: string, prev: string[]): string[] => [...(prev ?? []), v];
 export const count = (_: string, prev: number): number => prev + 1;
 export const int = (v: string): number => {
   const n = Number.parseInt(v, 10);

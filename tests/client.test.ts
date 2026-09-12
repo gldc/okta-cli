@@ -32,6 +32,18 @@ describe("OktaClient", () => {
     expect(srv.calls.length).toBe(3);
   });
 
+  test("getAll falls back to body _links.next when there is no Link header", async () => {
+    srv = startServer([]);
+    srv.add({ method: "GET", path: "/api/v1/iam/roles", handler: (_req, url) => {
+      const after = url.searchParams.get("after");
+      if (!after) return Response.json({ roles: [{ id: "r1" }], _links: { next: { href: `${srv.url}/api/v1/iam/roles?after=x` } } });
+      return Response.json({ roles: [{ id: "r2" }] });
+    } });
+    const c = new OktaClient(srv.url, "tok", { sleep: noSleep });
+    expect(await c.getAll("/iam/roles", { listKey: "roles" })).toEqual([{ id: "r1" }, { id: "r2" }]);
+    expect(srv.calls.length).toBe(2);
+  });
+
   test("getAll honours max and listKey", async () => {
     srv = startServer([{ method: "GET", path: "/api/v1/domains", body: { domains: [{ id: 1 }, { id: 2 }, { id: 3 }] } }]);
     const c = new OktaClient(srv.url, "tok", { sleep: noSleep });

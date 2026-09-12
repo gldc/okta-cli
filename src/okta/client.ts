@@ -1,3 +1,4 @@
+import { isPlainObject } from "../lib/dotted";
 import { CommunicationError, OktaApiError, type OktaErrorBody } from "./errors";
 
 export type Method = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
@@ -122,7 +123,7 @@ export class OktaClient {
       if (!Array.isArray(page) || page.length === 0) break;
       out.push(...((page as unknown[]).map(stripLinks) as T[]));
       if (opts.max !== undefined && out.length >= opts.max) break;
-      const next = parseNextLink(rsp.headers.get("link"));
+      const next = parseNextLink(rsp.headers.get("link")) ?? (isPlainObject(raw) ? (raw as any)._links?.next?.href : undefined);
       if (!next || next === lastUrl) break;
       lastUrl = next;
       rsp = await this.request("GET", next);

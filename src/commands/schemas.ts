@@ -7,7 +7,7 @@ import { defineResource, type ResourceSpec } from "./resource";
 
 const PROPERTY_FIELDS = "name,scope,type,title,required,mutability";
 
-export const LINKED_OBJECTS: ResourceSpec = { name: "linked-objects", description: "Linked object definitions (user relationships)", path: "/meta/schemas/user/linkedObjects", singular: "linked object definition", nameField: "primary.name", defaultFields: "primary.name,primary.title,associated.name,associated.title", replaceable: false, creatable: false };
+export const LINKED_OBJECTS: ResourceSpec = { name: "linked-objects", description: "Linked object definitions (user relationships)", path: "/meta/schemas/user/linkedObjects", singular: "linked object definition", nameField: "primary.name", defaultFields: "primary.name,primary.title,associated.name,associated.title", replaceable: false, creatable: false, idField: "primary.name" };
 
 export function flattenSchemaProperties(schema: any): any[] {
   const rows: any[] = [];

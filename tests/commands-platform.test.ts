@@ -26,6 +26,12 @@ describe("platform resources", () => {
     await runTest(["trusted-origins", "add", "-n", "b", "-o", "https://b"], t.ctx);
     expect((srv.calls[1]!.body as any).scopes).toEqual([{ type: "CORS" }, { type: "REDIRECT" }]);
   });
+  test("trusted-origins add rejects an invalid --scope locally", async () => {
+    srv = startServer([]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["trusted-origins", "add", "-n", "x", "-o", "https://x", "--scope", "BOGUS"], t.ctx)).not.toBe(0);
+    expect(srv.calls.length).toBe(0);
+  });
   test("domains list unwraps, add, verify", async () => {
     const d = { id: "d1", domain: "login.acme.com", validationStatus: "NOT_STARTED", certificateSourceType: "OKTA_MANAGED" };
     srv = startServer([

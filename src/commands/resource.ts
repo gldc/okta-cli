@@ -10,7 +10,7 @@ import { CommunicationError, ExitError, OktaApiError } from "../okta/errors";
 export interface ListOption { flags: string; param: string; description: string; required?: boolean; requiredForList?: boolean; choices?: string[]; transform?: (v: string) => string }
 export interface ResourceSpec {
   name: string; description: string; path: string; singular: string; nameField: string; defaultFields: string;
-  lifecycle?: boolean; deletable?: boolean; replaceable?: boolean; creatable?: boolean; listKey?: string; listOptions?: ListOption[]; sortBy?: string;
+  lifecycle?: boolean; deletable?: boolean; replaceable?: boolean; creatable?: boolean; listKey?: string; listOptions?: ListOption[]; sortBy?: string; idField?: string;
 }
 
 const optKey = (flags: string) => {
@@ -35,6 +35,7 @@ function addListOptions(cmd: Command, spec: ResourceSpec, forList = false): Comm
 }
 
 const nameOf = (spec: ResourceSpec, item: any) => String(getDotted(item, spec.nameField) ?? "");
+const idOf = (spec: ResourceSpec, item: any) => String(getDotted(item, spec.idField ?? "id") ?? "");
 
 export async function resourceList(client: OktaClient, spec: ResourceSpec, partial: string | undefined, query: Query = {}): Promise<any[]> {
   let items: any[] = await client.getAll(spec.path, { query, listKey: spec.listKey });
@@ -91,7 +92,7 @@ export function defineResource(parent: Command, ctx: Ctx, spec: ResourceSpec): C
         let body = parseBody(opts.body, opts.set);
         if (body === undefined) throw new ExitError("Provide -b and/or -s");
         if (!opts.body && isPlainObject(body)) body = deepMerge(existing, body);
-        return client.json("PUT", `${spec.path}/${existing.id}`, { body });
+        return client.json("PUT", `${spec.path}/${idOf(spec, existing)}`, { body });
       }));
   }
 
@@ -99,8 +100,9 @@ export function defineResource(parent: Command, ctx: Ctx, spec: ResourceSpec): C
     addVerbose(addListOptions(g.command("delete").description(`Delete a ${spec.singular}`).argument("<name-or-id>"), spec))
       .action(action(ctx, async (client, opts, nameOrId) => {
         const item = await resourceGet(client, spec, nameOrId, lookupQuery(spec, opts));
-        await client.json("DELETE", `${spec.path}/${item.id}`);
-        return `${spec.singular} ${item.id} (${nameOf(spec, item)}) deleted`;
+        const id = idOf(spec, item);
+        await client.json("DELETE", `${spec.path}/${id}`);
+        return `${spec.singular} ${id} (${nameOf(spec, item)}) deleted`;
       }));
   }
 
@@ -109,8 +111,9 @@ export function defineResource(parent: Command, ctx: Ctx, spec: ResourceSpec): C
       out(g.command(verb).description(`${verb[0]!.toUpperCase()}${verb.slice(1)} a ${spec.singular}`).argument("<name-or-id>"))
         .action(action(ctx, async (client, opts, nameOrId) => {
           const item = await resourceGet(client, spec, nameOrId, lookupQuery(spec, opts));
-          const rv = await client.json("POST", `${spec.path}/${item.id}/lifecycle/${verb}`);
-          return rv ?? `${spec.singular} ${item.id} (${nameOf(spec, item)}) ${verb}d`;
+          const id = idOf(spec, item);
+          const rv = await client.json("POST", `${spec.path}/${id}/lifecycle/${verb}`);
+          return rv ?? `${spec.singular} ${id} (${nameOf(spec, item)}) ${verb}d`;
         }));
     }
   }

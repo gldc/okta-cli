@@ -1,7 +1,13 @@
-import { Option, type Command } from "commander";
+import { InvalidArgumentError, Option, type Command } from "commander";
 import type { Ctx } from "../cli/context";
-import { action, addOutputOptions, addVerbose, collect } from "../cli/options";
+import { action, addOutputOptions, addVerbose } from "../cli/options";
 import { defineResource, resourceGet, type ResourceSpec } from "./resource";
+
+const SCOPE_CHOICES = ["CORS", "REDIRECT", "IFRAME_EMBED"];
+const collectScope = (v: string, prev: string[]): string[] => {
+  if (!SCOPE_CHOICES.includes(v)) throw new InvalidArgumentError(`Allowed choices are ${SCOPE_CHOICES.join(", ")}.`);
+  return [...prev, v];
+};
 
 export const TRUSTED_ORIGINS: ResourceSpec = { name: "trusted-origins", description: "Trusted origins (CORS / redirect)", path: "/trustedOrigins", singular: "trusted origin", nameField: "name", defaultFields: "id,status,name,origin", lifecycle: true, creatable: false };
 export const DOMAINS: ResourceSpec = { name: "domains", description: "Custom domains", path: "/domains", singular: "custom domain", nameField: "domain", defaultFields: "id,domain,validationStatus,certificateSourceType", listKey: "domains", replaceable: false, creatable: false };
@@ -13,7 +19,7 @@ export function registerPlatform(program: Command, ctx: Ctx): void {
   const to = defineResource(program, ctx, TRUSTED_ORIGINS);
   addOutputOptions(addVerbose(to.command("add").description("Create a trusted origin")
     .requiredOption("-n, --name <name>").requiredOption("-o, --origin <url>")
-    .addOption(new Option("--scope <scope>", "scope type, repeatable (default: CORS + REDIRECT)").choices(["CORS", "REDIRECT", "IFRAME_EMBED"]).argParser(collect).default([]))), TRUSTED_ORIGINS.defaultFields)
+    .addOption(new Option("--scope <scope>", "scope type, repeatable (default: CORS + REDIRECT)").choices(SCOPE_CHOICES).argParser(collectScope).default([]))), TRUSTED_ORIGINS.defaultFields)
     .action(action(ctx, (client, opts) => {
       const scopes: string[] = opts.scope.length ? opts.scope : ["CORS", "REDIRECT"];
       return client.json("POST", "/trustedOrigins", { body: { name: opts.name, origin: opts.origin, scopes: scopes.map((type) => ({ type })) } });

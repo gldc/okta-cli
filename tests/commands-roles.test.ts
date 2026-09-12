@@ -34,6 +34,20 @@ describe("roles", () => {
     expect(t.out.at(-1)).toBe("rs1  \n");
   });
 
+  test("roles list follows body-only next link (no Link header)", async () => {
+    srv = startServer([]);
+    srv.add({ method: "GET", path: "/api/v1/iam/roles", handler: (_req, url) => {
+      if (!url.searchParams.get("after")) {
+        return Response.json({ roles: [{ id: "cr1", label: "Alpha", description: "d" }], _links: { next: { href: `${srv.url}/api/v1/iam/roles?after=x` } } });
+      }
+      return Response.json({ roles: [{ id: "cr2", label: "Zebra", description: "d" }] });
+    } });
+    const t = testCtx(srv.url);
+    await runTest(["roles", "list", "--output-fields", "label"], t.ctx);
+    expect(t.out.at(-1)).toBe("Alpha  \nZebra  \n");
+    expect(srv.calls.length).toBe(2);
+  });
+
   test("user and group role assignment", async () => {
     srv = startServer([
       { method: "GET", path: "/api/v1/users/00u00000000000000001/roles", body: [{ id: "ra1", type: "APP_ADMIN", label: "Application Administrator", status: "ACTIVE", assignmentType: "USER" }] },

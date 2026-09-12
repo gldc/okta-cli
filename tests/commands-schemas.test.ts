@@ -136,6 +136,19 @@ describe("linked-objects", () => {
     await runTest(["linked-objects", "add", "--primary-name", "manager", "--primary-title", "Manager", "--primary-description", "d", "--associated-name", "directReports", "--associated-title", "Direct Reports"], t.ctx);
     expect(srv.calls.at(-1)!.body).toEqual(link);
   });
+
+  test("delete uses primary.name (linked objects have no id)", async () => {
+    const link = { primary: { name: "manager", title: "Manager" }, associated: { name: "directReports", title: "Direct Reports" } };
+    srv = startServer([
+      { method: "GET", path: "/api/v1/meta/schemas/user/linkedObjects/manager", body: link },
+      { method: "DELETE", path: "/api/v1/meta/schemas/user/linkedObjects/manager" },
+    ]);
+    const t = testCtx(srv.url);
+    await runTest(["linked-objects", "delete", "manager"], t.ctx);
+    expect(srv.calls.at(-1)!.method).toBe("DELETE");
+    expect(srv.calls.at(-1)!.path).toBe("/api/v1/meta/schemas/user/linkedObjects/manager");
+    expect(t.out.at(-1)).toBe("linked object definition manager (manager) deleted\n");
+  });
 });
 
 describe("users linked/link/unlink", () => {

@@ -7,7 +7,7 @@ import { ExitError } from "../okta/errors";
 import { defineResource, type ResourceSpec } from "./resource";
 
 export const ROLE_TYPES = ["SUPER_ADMIN", "ORG_ADMIN", "APP_ADMIN", "USER_ADMIN", "HELP_DESK_ADMIN", "READ_ONLY_ADMIN", "MOBILE_ADMIN", "API_ACCESS_MANAGEMENT_ADMIN", "REPORT_ADMIN", "GROUP_MEMBERSHIP_ADMIN", "ACCESS_CERTIFICATIONS_ADMIN", "ACCESS_REQUESTS_ADMIN", "CUSTOM"];
-const ASSIGNMENT_FIELDS = "id,type,label,status,assignmentType,resource-set";
+const ASSIGNMENT_FIELDS = "id,type,label,status,assignmentType";
 
 export const CUSTOM_ROLES: ResourceSpec = { name: "roles", description: "Admin roles: custom roles, resource sets, assignees", path: "/iam/roles", singular: "custom role", nameField: "label", defaultFields: "id,label,description", listKey: "roles" };
 
@@ -38,7 +38,7 @@ function attachAssignments(parent: Command, ctx: Ctx, kind: "user" | "group", re
 
 export function registerRoles(program: Command, ctx: Ctx, groups: { users: Command; groups: Command }): void {
   const g = defineResource(program, ctx, CUSTOM_ROLES);
-  addOutputOptions(addVerbose(g.command("assignees").description("List users that have admin role assignments")), "id,orgId,status,created,lastUpdated")
+  addOutputOptions(addVerbose(g.command("assignees").description("List users that have admin role assignments")), "id,orn")
     .action(action(ctx, (client) => client.getAll("/iam/assignees/users", { listKey: "value" })));
   addOutputOptions(addVerbose(g.command("resource-sets").description("List resource sets").argument("[partial]")), "id,label,description")
     .action(action(ctx, async (client, _o, partial?: string) => {

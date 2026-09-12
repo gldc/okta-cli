@@ -20,20 +20,22 @@ describe("logs", () => {
       return Response.json(body, { headers: { Link: `<${url.origin}/api/v1/logs?after=${page}>; rel="next"` } });
     } }]);
     const t = testCtx(srv.url);
-    await runTest(["logs", "list", "--since", "2026-01-01T00:00:00Z", "-f", 'eventType eq "user.session.start"', "--sort-order", "DESCENDING", "-l", "50", "--output-fields", "uuid"], t.ctx);
+    await runTest(["logs", "list", "--since", "2026-01-01T00:00:00Z", "-f", 'eventType eq "user.session.start"', "--sort-order", "DESCENDING", "--page-size", "50", "--output-fields", "uuid"], t.ctx);
     expect(srv.calls[0]!.query).toEqual({ since: "2026-01-01T00:00:00Z", filter: 'eventType eq "user.session.start"', sortOrder: "DESCENDING", limit: "50" });
     expect(t.out.at(-1)).toBe("e1  \ne2  \n");
     expect(srv.calls.length).toBe(3);
     page = 0; srv.calls.length = 0;
-    await runTest(["logs", "list", "--max", "1", "--output-fields", "uuid"], t.ctx);
+    await runTest(["logs", "list", "-l", "1", "--output-fields", "uuid"], t.ctx);
+    expect(srv.calls.at(-1)!.query.limit).toBe("1");
     expect(t.out.at(-1)).toBe("e1  \n");
     expect(srv.calls.length).toBe(1);
   });
 
-  test("--limit rejects values outside 1..1000", async () => {
+  test("--page-size rejects values outside 1..1000, --limit rejects negatives", async () => {
     const t = testCtx("http://127.0.0.1:1");
-    expect(await runTest(["logs", "list", "--limit", "0"], t.ctx)).toBe(1);
-    expect(await runTest(["logs", "list", "--limit", "1001"], t.ctx)).toBe(1);
+    expect(await runTest(["logs", "list", "--page-size", "0"], t.ctx)).toBe(1);
+    expect(await runTest(["logs", "list", "--page-size", "1001"], t.ctx)).toBe(1);
+    expect(await runTest(["logs", "list", "--limit", "-1"], t.ctx)).toBe(1);
   });
 });
 

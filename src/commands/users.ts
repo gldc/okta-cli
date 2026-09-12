@@ -1,11 +1,13 @@
 import type { Command } from "commander";
 import type { Ctx } from "../cli/context";
 import { action, addOutputOptions, addVerbose, collect, subgroup } from "../cli/options";
-import { flatToNested, parseAssignments } from "../lib/dotted";
+import { parseBody } from "../lib/body";
+import { deepMerge, flatToNested, isPlainObject, nestedToFlat, parseAssignments } from "../lib/dotted";
 import { filterDicts } from "../lib/filter";
 import { getUser, retrieve } from "../lib/lookup";
 import type { OktaClient } from "../okta/client";
 import { ExitError, OktaApiError } from "../okta/errors";
+import { flattenSchemaProperties } from "./schemas";
 
 export const USER_FIELDS = "id,status,profile.login,profile.firstName,profile.lastName,profile.email";
 
@@ -38,6 +40,23 @@ export function usersUpdateBody(sets: string[], arraySets: string[], context?: s
 
 const lookupFieldOpt = (cmd: Command) => cmd.option("-f, --user-lookup-field <FIELDNAME>", "Users are matched against the ID or this profile field; default: 'login'.", "login");
 const sendEmailQuery = (flag: boolean | undefined) => (flag ? { sendEmail: "true" } : {});
+
+async function resolveUserId(client: OktaClient, idOrValue: string, lookupField: string): Promise<string> {
+  if (lookupField && lookupField !== "login") return (await getUser(client, idOrValue, lookupField)).id;
+  return idOrValue;
+}
+
+export function profileRows(profile: Record<string, unknown>): { field: string; value: unknown }[] {
+  const flat = nestedToFlat(profile ?? {});
+  return Object.entries(flat)
+    .map(([field, value]) => ({ field, value: isPlainObject(value) || Array.isArray(value) ? JSON.stringify(value) : value }))
+    .sort((a, b) => a.field.localeCompare(b.field));
+}
+
+export function schemaCheck(profile: Record<string, unknown>, schema: any): any[] {
+  const names = new Set(flattenSchemaProperties(schema).map((p: any) => p.name));
+  return profileRows(profile).map((r) => ({ ...r, status: names.has(r.field) ? "ok" : "not-in-schema" }));
+}
 
 export function registerUsers(program: Command, ctx: Ctx): Command {
   const g = subgroup(program, "users", "Add, update (etc.) users");
@@ -122,11 +141,46 @@ export function registerUsers(program: Command, ctx: Ctx): Command {
   addVerbose(g.command("suspend").description("Suspend a user").argument("<login_or_id>"))
     .action(action(ctx, (client, _o, id) => client.json("POST", `/users/${id}/lifecycle/suspend`)));
 
-  addVerbose(g.command("update").description("Update a user object (POST partial update). Examples: -s profile.email=me@x.com | -S profile.multi=a,b | -c credentials.recovery_question -s question=Q -s answer=A").argument("<user_id>")
+  addVerbose(lookupFieldOpt(g.command("update").description("Update a user object (POST partial update). Examples: -s profile.email=me@x.com | -S profile.multi=a,b | -c credentials.recovery_question -s question=Q -s answer=A").argument("<user_id>")
     .option("-s, --set <FIELD=value>", "set a field", collect, [])
     .option("-S, --array-set <FIELD=a,b>", "set an array field", collect, [])
-    .option("-c, --context <prefix>", "Set a context (profile, credentials) to save typing"))
-    .action(action(ctx, (client, opts, id) => client.json("POST", `/users/${id}`, { body: usersUpdateBody(opts.set, opts.arraySet, opts.context) })));
+    .option("-c, --context <prefix>", "Set a context (profile, credentials) to save typing")
+    .option("--from-json <json|FILE:path>", "JSON body merged under -s/-S; FILE:<path> reads a file")))
+    .action(action(ctx, async (client, opts, id) => {
+      const targetId = await resolveUserId(client, id, opts.userLookupField);
+      const setBody = usersUpdateBody(opts.set, opts.arraySet, opts.context);
+      const body = opts.fromJson !== undefined ? deepMerge(parseBody(opts.fromJson) as Record<string, unknown>, setBody) : setBody;
+      return client.json("POST", `/users/${targetId}`, { body });
+    }));
+
+  addOutputOptions(addVerbose(lookupFieldOpt(g.command("replace").description("Replace (PUT) a user object; with only -s/-S/-c the current user is fetched and merged (PUT drops unspecified profile attributes)").argument("<user>")
+    .option("-s, --set <FIELD=value>", "set a field", collect, [])
+    .option("-S, --array-set <FIELD=a,b>", "set an array field", collect, [])
+    .option("-c, --context <prefix>", "Set a context (profile, credentials) to save typing")
+    .option("--from-json <json|FILE:path>", "JSON body merged under -s/-S; FILE:<path> reads a file"))), USER_FIELDS)
+    .action(action(ctx, async (client, opts, user) => {
+      const id = await resolveUserId(client, user, opts.userLookupField);
+      const setBody = usersUpdateBody(opts.set, opts.arraySet, opts.context);
+      let body: Record<string, unknown> = opts.fromJson !== undefined ? deepMerge(parseBody(opts.fromJson) as Record<string, unknown>, setBody) : setBody;
+      if (opts.fromJson === undefined) {
+        const existing = await client.get(`/users/${id}`);
+        body = deepMerge(existing, body);
+      }
+      return client.json("PUT", `/users/${id}`, { body });
+    }));
+
+  addOutputOptions(addVerbose(lookupFieldOpt(g.command("profile").description("Show a user's profile as field/value rows").argument("<user>"))), "field,value")
+    .action(action(ctx, async (client, opts, user) => {
+      const u = await getUser(client, user, opts.userLookupField);
+      return profileRows(u.profile);
+    }));
+
+  addOutputOptions(addVerbose(lookupFieldOpt(g.command("schema-check").description("Compare a user's profile fields against the user schema (useful before bulk updates)").argument("<user>"))), "field,value,status")
+    .action(action(ctx, async (client, opts, user) => {
+      const u = await getUser(client, user, opts.userLookupField);
+      const schema = await client.get("/meta/schemas/user/default");
+      return schemaCheck(u.profile, schema);
+    }));
 
   addVerbose(g.command("add").description("Add a user to Okta. '-p login=x' equals '-s profile.login=x' (-p wins).")
     .option("-s, --set <FIELD=value>", "set any user object field", collect, [])

@@ -29,6 +29,12 @@ describe("logs", () => {
     expect(t.out.at(-1)).toBe("e1  \n");
     expect(srv.calls.length).toBe(1);
   });
+
+  test("--limit rejects values outside 1..1000", async () => {
+    const t = testCtx("http://127.0.0.1:1");
+    expect(await runTest(["logs", "list", "--limit", "0"], t.ctx)).toBe(1);
+    expect(await runTest(["logs", "list", "--limit", "1001"], t.ctx)).toBe(1);
+  });
 });
 
 describe("tokens", () => {

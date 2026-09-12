@@ -25,6 +25,12 @@ describe("users update/replace/profile/schema-check", () => {
     expect(srv.calls[1]!.body).toEqual({ id: "00u00000000000000001", status: "ACTIVE", profile: { login: "bob@x.com", email: "bob@x.com", firstName: "New", lastName: "B" } });
   });
 
+  test("replace with neither --from-json nor -s/-S/-c errors", async () => {
+    const t = testCtx("http://127.0.0.1:1");
+    expect(await runTest(["users", "replace", "00u00000000000000001"], t.ctx)).toBe(255);
+    expect(t.err.at(-1)).toBe("ERROR: Provide --from-json and/or -s\n");
+  });
+
   test("profile: rows sorted by field, arrays JSON-stringified", async () => {
     srv = startServer([
       { method: "GET", path: "/api/v1/users/00u00000000000000001", body: { id: "00u00000000000000001", profile: { login: "bob@x.com", zeta: "z", alpha: "a", tags: ["a", "b"] } } },

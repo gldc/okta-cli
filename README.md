@@ -59,7 +59,7 @@ $ okta-cli users list \                               # search users with a quer
            -f 'profile.email eq "my@email.com"'
 $ okta-cli users update id012345678 \                 # update a field of a user record
            --set profile.email=my@other.email.com
-$ okta-cli users groups adduser \                     # add a user to a group
+$ okta-cli groups adduser -g my_group -u my_user      # add a user to a group
 $ okta-cli users get my-login -vvvvv                  # see http debug output
 $ okta-cli users bulk-add add-list.csv                # Bulk-ADD users
 $ okta-cli users bulk-update update-list.xlsx         # Bulk-UPDATE users
@@ -67,8 +67,6 @@ $ okta-cli users bulk-update update-list.xlsx         # Bulk-UPDATE users
 $ okta-cli features -h                                # get help
 $ okta-cli features list                              # list okta server-side features
 $ okta-cli features enable "Recent Activity"          # enable an Okta feature
-           -g app1_rollout \
-           -u fred.flintstone@flintstones.com
 
 # new in 19.0.0
 $ okta-cli logs list --since 2026-09-01T00:00:00.000Z # tail the system log since a timestamp
@@ -145,10 +143,11 @@ Reasoning: `okta-cli` tries to determine the column separator, and without one .
 
 ## Output formats
 
-Every API command supports `-j/--json` (indented, sorted keys), `-y/--yaml`, `--csv`
-(`--csv-dialect excel|excel-tab|unix`, sorted dotted keys) and, for commands with default
-fields, a table (`--output-fields <csv>` to override, `--colwidth <n>` to truncate cells). A
-handler that returns a plain string is printed as-is regardless of these flags.
+Commands that return an object or a list support `-j/--json` (indented, sorted keys),
+`-y/--yaml`, `--csv` (`--csv-dialect excel|excel-tab|unix`, sorted dotted keys) and, for
+commands with default fields, a table (`--output-fields <csv>` to override, `--colwidth <n>`
+to truncate cells). Commands that print a plain confirmation string (e.g. `users
+sessions-revoke`, `tokens revoke`, `users unlink`) only take `-v`.
 
 With no output flag: commands that have default table fields print a table if the result is
 non-empty, otherwise JSON; commands without default table fields always print JSON.
@@ -190,6 +189,9 @@ have done):
 
 Other intentional deviations, all judgment calls where 18.1.2's behavior wasn't worth
 matching exactly:
+
+- `groups rules list` uses `--search <text>` with no `-s` short form, because `-s` is taken
+  by `--set` on the shared option set.
 
 - Sorting uses locale-aware string comparison (JavaScript's default `Array.sort`/
   `localeCompare`), not Python's code-point `sorted()`.

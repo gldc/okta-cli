@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     strategy:
       matrix:
         target: [bun-darwin-arm64, bun-darwin-x64, bun-linux-x64, bun-linux-arm64]

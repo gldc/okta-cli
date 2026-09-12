@@ -118,6 +118,17 @@ describe("policies clone / apps / map", () => {
     expect(JSON.parse(t.out.join(""))[0].id).toBe("0oa1");
   });
 
+  test("mappings lists a policy's resource mappings", async () => {
+    srv = startServer([
+      policyByIdRoute,
+      { method: "GET", path: "/api/v1/policies/pol1/mappings", body: [{ id: "m1", resourceType: "APP", resourceId: "0oa1" }] },
+    ]);
+    const t = testCtx(srv.url);
+    await runTest(["policies", "mappings", "pol1", "-j"], t.ctx);
+    expect(srv.calls.at(-1)!.path).toBe("/api/v1/policies/pol1/mappings");
+    expect(JSON.parse(t.out.join(""))[0].id).toBe("m1");
+  });
+
   test("map posts resourceType/resourceId body", async () => {
     srv = startServer([
       policyByIdRoute,

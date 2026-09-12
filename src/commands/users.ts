@@ -159,6 +159,9 @@ export function registerUsers(program: Command, ctx: Ctx): Command {
     .option("-c, --context <prefix>", "Set a context (profile, credentials) to save typing")
     .option("--from-json <json|FILE:path>", "JSON body merged under -s/-S; FILE:<path> reads a file"))), USER_FIELDS)
     .action(action(ctx, async (client, opts, user) => {
+      if (opts.fromJson === undefined && opts.set.length === 0 && opts.arraySet.length === 0 && !opts.context) {
+        throw new ExitError("Provide --from-json and/or -s");
+      }
       const id = await resolveUserId(client, user, opts.userLookupField);
       const setBody = usersUpdateBody(opts.set, opts.arraySet, opts.context);
       let body: Record<string, unknown> = opts.fromJson !== undefined ? deepMerge(parseBody(opts.fromJson) as Record<string, unknown>, setBody) : setBody;

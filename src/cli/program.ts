@@ -3,6 +3,7 @@ import { registerApps } from "../commands/apps";
 import { registerAuthServers } from "../commands/auth-servers";
 import { registerAuthenticators, registerUserSecurity } from "../commands/authenticators";
 import { registerConfig } from "../commands/config";
+import { registerDevices } from "../commands/devices";
 import { registerEventhooks } from "../commands/eventhooks";
 import { registerFeatures } from "../commands/features";
 import { registerGroupRules } from "../commands/group-rules";
@@ -49,6 +50,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerRoles(program, ctx, { users: usersCmd, groups: groupsCmd });
   registerPlatform(program, ctx);
   registerAuthServers(program, ctx);
+  registerDevices(program, ctx, usersCmd);
   registerInlinehooks(program, ctx);
   registerSchemas(program, ctx, usersCmd);
   registerGroupRules(groupsCmd, ctx);

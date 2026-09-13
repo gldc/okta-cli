@@ -12,6 +12,7 @@ import { registerGroupRules } from "../commands/group-rules";
 import { registerGroups } from "../commands/groups";
 import { registerIdps } from "../commands/idps";
 import { registerInlinehooks } from "../commands/inlinehooks";
+import { registerIntegrations } from "../commands/integrations";
 import { registerLogs } from "../commands/logs";
 import { registerMisc } from "../commands/misc";
 import { registerOrg } from "../commands/org";
@@ -67,6 +68,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerIdps(program, ctx);
   registerSecurity(program, ctx);
   registerDirectory(program, ctx);
+  registerIntegrations(program, ctx, usersCmd);
   registerMisc(program, ctx);
   return program;
 }

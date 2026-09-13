@@ -28,6 +28,7 @@ import { registerTokens } from "../commands/tokens";
 import { registerUserTypes } from "../commands/user-types";
 import { registerUsers } from "../commands/users";
 import { registerUsersBulk } from "../commands/users-bulk";
+import { registerUsersSecurity2 } from "../commands/users-security";
 import { CommunicationError, ExitError, OktaApiError } from "../okta/errors";
 import { VERSION } from "../version";
 import { ExitSignal, type Ctx } from "./context";
@@ -67,6 +68,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerPolicies(program, ctx);
   registerAuthenticators(program, ctx);
   registerUserSecurity(usersCmd, ctx);
+  registerUsersSecurity2(usersCmd, ctx);
   registerIdps(program, ctx);
   registerSecurity(program, ctx);
   registerDirectory(program, ctx);

@@ -1,5 +1,6 @@
 import { Command, CommanderError } from "commander";
 import { registerApps } from "../commands/apps";
+import { registerAuthServers } from "../commands/auth-servers";
 import { registerAuthenticators, registerUserSecurity } from "../commands/authenticators";
 import { registerConfig } from "../commands/config";
 import { registerEventhooks } from "../commands/eventhooks";
@@ -47,6 +48,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerOrg(program, ctx);
   registerRoles(program, ctx, { users: usersCmd, groups: groupsCmd });
   registerPlatform(program, ctx);
+  registerAuthServers(program, ctx);
   registerInlinehooks(program, ctx);
   registerSchemas(program, ctx, usersCmd);
   registerGroupRules(groupsCmd, ctx);

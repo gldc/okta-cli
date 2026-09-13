@@ -76,6 +76,9 @@ $ okta-cli schemas user add-property \                # add a custom property to
 $ okta-cli users roles some-login                     # list a user's admin role assignments
 $ okta-cli inlinehooks list                           # list inline hooks
 
+# new in 19.1.0
+$ okta-cli auth-servers scopes default                # list a custom authorization server's scopes
+
 $ okta-cli version                                    # print version and exit
 ```
 

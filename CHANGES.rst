@@ -1,3 +1,21 @@
+v19.3.0
+=======
+
+* New: apps credentials/claims/provisioning: jwks, secrets, csrs (+ certificate publish),
+  keys/key-clone, federated-claims, group-push mappings, connection (+ jwks/lifecycle),
+  cwo-connections, interclient-allowed/-targets, logo upload, assign-policy, feature-set
+* New: users credential and factor flows: change-password, forgot-password,
+  change-recovery-question, expire-password-temp, factor-enroll/-activate/-verify/-resend/
+  -transaction, factors-questions, authenticator-enrollments (+ phone/tac enrollment), risk,
+  classification, client-tokens, idp-tokens, webauthn-enrollment-delete
+* New: admin role targets and governance for users/groups/oauth-clients (role-targets,
+  role-target-add/-delete, role-governance, role-targets-all), resource-set bindings and
+  binding members, resource-set resources, role/user subscriptions
+* New: idps keys/csrs/signing-keys (+ clone/generate), authenticators methods/aaguids/
+  verify-rp-id, auth-servers associated servers/resource keys/rule lifecycle, domains
+  certificate, org yubikeys, log-streams schemas, telephony-providers, devices os-accounts,
+  policies app/mapping, groups user-rules, identity-sources group management
+
 v19.2.0
 =======
 

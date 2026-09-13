@@ -20,7 +20,7 @@ const OAUTH2_BASE = "/oauth2/v1";
 
 export const UI_SCHEMAS: ResourceSpec = {
   name: "ui-schemas", description: "UI schemas for enrollment forms", path: "/meta/uischemas", singular: "UI schema",
-  nameField: "id", defaultFields: "id,uiSchema.type,uiSchema.label,created", replaceable: true,
+  nameField: "id", defaultFields: "id,uiSchema.type,created", replaceable: true,
 };
 
 const AGENT_TYPES = ["AD", "IWA", "LDAP", "MFA", "OPP", "RUM", "Radius"];

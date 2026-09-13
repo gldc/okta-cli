@@ -116,7 +116,7 @@ export function registerSecurity(program: Command, ctx: Ctx): void {
   defineResource(program, ctx, DEVICE_INTEGRATIONS);
 
   const dpc = defineResource(program, ctx, DEVICE_POSTURE_CHECKS);
-  addOutputOptions(addVerbose(dpc.command("defaults").description("List all default (BUILTIN) device posture checks")), DEVICE_POSTURE_CHECKS.defaultFields)
+  addOutputOptions(addVerbose(dpc.command("defaults").description("List all default (BUILTIN) device posture checks")), "name,platform,type,variableName")
     .action(action(ctx, (client) => client.getAll("/device-posture-checks/default")));
 
   // Email servers.

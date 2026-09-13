@@ -88,7 +88,7 @@ $ okta-cli devices list --search 'status eq "ACTIVE"' # list active devices
 $ okta-cli mappings list --source-id <id>             # list profile mappings for a source
 
 # new in 19.2.0
-$ okta-cli brands themes default                      # list a brand's themes
+$ okta-cli brands themes runlayer                     # list a brand's themes (brand name or id)
 $ okta-cli ssf stream-status --stream-id <id>         # check an SSF stream's status
 $ okta-cli agent-pools list                           # list on-prem agent pools
 $ okta-cli pam service-accounts list                  # list privileged access service accounts

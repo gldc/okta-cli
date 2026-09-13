@@ -14,7 +14,7 @@ const PAGE_VARIANTS = ["customized", "default", "preview"];
 
 export const BRANDS: ResourceSpec = {
   name: "brands", description: "Brands and customization", path: "/brands", singular: "brand",
-  nameField: "name", defaultFields: "id,name,isDefault,removePoweredByOkta,locale",
+  nameField: "name", defaultFields: "id,name,isDefault,removePoweredByOkta",
   // Deviation from the plan: the spec's queryExpandBrand also allows "themes" (not just
   // "domains"/"emailDomain").
   listOptions: [{ flags: "--expand <what>", param: "expand", description: "themes, domains, or emailDomain", choices: ["themes", "domains", "emailDomain"] }],

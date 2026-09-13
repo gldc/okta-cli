@@ -19,6 +19,7 @@ import { registerPolicies } from "../commands/policies";
 import { registerPw } from "../commands/pw";
 import { registerRoles } from "../commands/roles";
 import { registerSchemas } from "../commands/schemas";
+import { registerSecurity } from "../commands/security";
 import { registerTenant } from "../commands/tenant";
 import { registerTokens } from "../commands/tokens";
 import { registerUserTypes } from "../commands/user-types";
@@ -63,6 +64,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerAuthenticators(program, ctx);
   registerUserSecurity(usersCmd, ctx);
   registerIdps(program, ctx);
+  registerSecurity(program, ctx);
   registerMisc(program, ctx);
   return program;
 }

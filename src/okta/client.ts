@@ -111,7 +111,9 @@ export class OktaClient {
   async request(method: Method, path: string, opts: RequestOptions = {}): Promise<Response> {
     const url = this.buildUrl(path, opts.query, opts.basePath);
     const init: RequestInit = { method, headers: opts.headers ? { ...this.headers, ...opts.headers } : this.headers };
-    if (opts.body !== undefined && method !== "GET") init.body = JSON.stringify(opts.body);
+    // A string body (e.g. a raw SET JWT for security-events send) is sent as-is rather than
+    // JSON-encoded - every other caller's body is an object/array from parseBody/bodyFromOpts.
+    if (opts.body !== undefined && method !== "GET") init.body = typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
     return this.send(method, url, init);
   }
 

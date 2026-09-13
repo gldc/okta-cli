@@ -16,10 +16,16 @@ large set of new command groups (see Quickstart below). Python is no longer requ
 
 ### Release binaries
 
-Download a prebuilt single-file binary from the
-[GitHub Releases](https://github.com/gldc/okta-cli/releases) page: `darwin-arm64`,
-`darwin-x64`, `linux-x64` and `linux-arm64` are published for every tagged version. Make it
-executable and put it on your `PATH`.
+Prebuilt single-file binaries (`darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`) are
+published for every tagged version on the
+[GitHub Releases](https://github.com/gldc/okta-cli/releases) page:
+
+```bash
+# macOS (Apple silicon); swap the target for darwin-x64, linux-x64 or linux-arm64
+curl -fsSL -o okta-cli https://github.com/gldc/okta-cli/releases/latest/download/okta-cli-bun-darwin-arm64
+chmod +x okta-cli && sudo mv okta-cli /usr/local/bin/
+okta-cli version
+```
 
 ### Via Bun
 

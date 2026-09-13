@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { parseBody } from "../lib/body";
 import { formatResult } from "../lib/output";
 import type { OktaClient } from "../okta/client";
 import { CommunicationError, ExitError, OktaApiError } from "../okta/errors";
@@ -10,6 +11,14 @@ export const int = (v: string): number => {
   const n = Number.parseInt(v, 10);
   if (Number.isNaN(n)) throw new ExitError(`Expected an integer, got '${v}'`);
   return n;
+};
+
+export const bodyOpts = (cmd: Command): Command =>
+  cmd.option("-b, --body <json>", "JSON body; FILE:<path> reads a file").option("-s, --set <k=v>", "set a (dotted) field", collect, []);
+export const bodyFromOpts = (opts: Record<string, any>): unknown => {
+  const body = parseBody(opts.body, opts.set);
+  if (body === undefined) throw new ExitError("Provide -b and/or -s");
+  return body;
 };
 
 export function addVerbose(cmd: Command): Command {

@@ -1,12 +1,9 @@
 import { Option, type Command } from "commander";
 import type { Ctx } from "../cli/context";
-import { action, addOutputOptions, addVerbose, collect } from "../cli/options";
-import { parseBody } from "../lib/body";
+import { action, addOutputOptions, addVerbose, bodyFromOpts, bodyOpts } from "../cli/options";
 import { deepMerge, isPlainObject } from "../lib/dotted";
-import { selectField } from "../lib/lookup";
 import type { OktaClient } from "../okta/client";
-import { ExitError, OktaApiError } from "../okta/errors";
-import { defineResource, resourceGet, type ResourceSpec } from "./resource";
+import { defineResource, getNested, resourceGet, type ResourceSpec } from "./resource";
 
 export const POLICY_TYPES = ["OKTA_SIGN_ON", "PASSWORD", "MFA_ENROLL", "IDP_DISCOVERY", "ACCESS_POLICY", "PROFILE_ENROLLMENT", "POST_AUTH_SESSION", "ENTITY_RISK", "CONTINUOUS_ACCESS"];
 const RULE_FIELDS = "id,status,type,priority,name,system";
@@ -23,18 +20,7 @@ function sortByPriority(items: any[]): any[] {
   return [...items].sort((a, b) => (typeof a.priority === "number" && typeof b.priority === "number" ? a.priority - b.priority : String(a.priority ?? "").localeCompare(String(b.priority ?? ""))));
 }
 
-async function getRule(client: OktaClient, policyId: string, ruleArg: string): Promise<any> {
-  try {
-    return await client.get(`/policies/${policyId}/rules/${encodeURIComponent(ruleArg)}`);
-  } catch (e) {
-    if (!(e instanceof OktaApiError)) throw e;
-  }
-  const rules: any[] = await client.getAll(`/policies/${policyId}/rules`);
-  const matches = rules.filter(selectField("name", ruleArg));
-  if (matches.length > 1) throw new ExitError(`Name for policy rule must be unique. (found ${matches.length} matches).`);
-  if (matches.length === 0) throw new ExitError("No matching policy rule found.");
-  return matches[0];
-}
+const getRule = (client: OktaClient, policyId: string, ruleArg: string) => getNested(client, `/policies/${policyId}/rules`, ruleArg, "name", "policy rule");
 
 const typeOpt = (cmd: Command) => cmd.addOption(new Option("-t, --type <type>", "policy type (for name lookup)").choices(POLICY_TYPES));
 const resolvePolicy = (client: OktaClient, opts: Record<string, any>, policyArg: string) => resourceGet(client, POLICIES, policyArg, opts.type ? { type: opts.type } : {});
@@ -54,22 +40,17 @@ export function registerPolicies(program: Command, ctx: Ctx): Command {
       return getRule(client, policy.id, ruleArg);
     }));
 
-  addOutputOptions(addVerbose(typeOpt(g.command("rule-add").description("Create a policy rule from a JSON body (-b) and/or dotted assignments (-s)").argument("<policy>")
-    .option("-b, --body <json>", "JSON body; FILE:<path> reads a file").option("-s, --set <k=v>", "set a (dotted) field", collect, []))), RULE_FIELDS)
+  addOutputOptions(addVerbose(typeOpt(bodyOpts(g.command("rule-add").description("Create a policy rule from a JSON body (-b) and/or dotted assignments (-s)").argument("<policy>")))), RULE_FIELDS)
     .action(action(ctx, async (client, opts, policyArg) => {
       const policy = await resolvePolicy(client, opts, policyArg);
-      const body = parseBody(opts.body, opts.set);
-      if (body === undefined) throw new ExitError("Provide -b and/or -s");
-      return client.json("POST", `/policies/${policy.id}/rules`, { body });
+      return client.json("POST", `/policies/${policy.id}/rules`, { body: bodyFromOpts(opts) });
     }));
 
-  addOutputOptions(addVerbose(typeOpt(g.command("rule-replace").description("Replace (PUT) a policy rule; with only -s the current object is fetched and merged").argument("<policy>").argument("<rule>")
-    .option("-b, --body <json>", "JSON body; FILE:<path> reads a file").option("-s, --set <k=v>", "set a (dotted) field", collect, []))), RULE_FIELDS)
+  addOutputOptions(addVerbose(typeOpt(bodyOpts(g.command("rule-replace").description("Replace (PUT) a policy rule; with only -s the current object is fetched and merged").argument("<policy>").argument("<rule>")))), RULE_FIELDS)
     .action(action(ctx, async (client, opts, policyArg, ruleArg) => {
       const policy = await resolvePolicy(client, opts, policyArg);
       const existing = await getRule(client, policy.id, ruleArg);
-      let body = parseBody(opts.body, opts.set);
-      if (body === undefined) throw new ExitError("Provide -b and/or -s");
+      let body = bodyFromOpts(opts);
       if (!opts.body && isPlainObject(body)) body = deepMerge(existing, body);
       return client.json("PUT", `/policies/${policy.id}/rules/${existing.id}`, { body });
     }));

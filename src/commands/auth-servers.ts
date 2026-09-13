@@ -1,11 +1,8 @@
 import { Option, type Command } from "commander";
 import type { Ctx } from "../cli/context";
-import { action, addOutputOptions, addVerbose, collect } from "../cli/options";
-import { parseBody } from "../lib/body";
-import { selectField } from "../lib/lookup";
+import { action, addOutputOptions, addVerbose, bodyFromOpts, bodyOpts } from "../cli/options";
 import type { OktaClient } from "../okta/client";
-import { ExitError, OktaApiError } from "../okta/errors";
-import { defineResource, resourceGet, type ResourceSpec } from "./resource";
+import { defineResource, getNested, resourceGet, type ResourceSpec } from "./resource";
 
 const SCOPE_FIELDS = "id,name,displayName,default,consent,system";
 const CLAIM_FIELDS = "id,name,claimType,valueType,status,alwaysIncludeInToken";
@@ -22,35 +19,11 @@ const KEY_USE_CHOICES = ["sig"];
 export const AUTH_SERVERS: ResourceSpec = {
   name: "auth-servers", description: "Custom authorization servers (OAuth 2.0 / OIDC)", path: "/authorizationServers", singular: "authorization server",
   nameField: "name", defaultFields: "id,status,name,audiences,issuer", lifecycle: true,
-  listOptions: [{ flags: "--limit <n>", param: "limit", description: "page size" }],
 };
 
 function sortByPriority(items: any[]): any[] {
   return [...items].sort((a, b) => (typeof a.priority === "number" && typeof b.priority === "number" ? a.priority - b.priority : String(a.priority ?? "").localeCompare(String(b.priority ?? ""))));
 }
-
-// Resolves a nested (non-top-level) resource by id, falling back to a unique substring
-// match on `nameField` across the collection at `path` — same pattern as getRule() in
-// policies.ts, generalized for reuse across scopes/claims/policies/rules.
-async function getNested(client: OktaClient, path: string, arg: string, nameField: string, singular: string): Promise<any> {
-  try {
-    return await client.get(`${path}/${encodeURIComponent(arg)}`);
-  } catch (e) {
-    if (!(e instanceof OktaApiError)) throw e;
-  }
-  const items: any[] = await client.getAll(path);
-  const matches = items.filter(selectField(nameField, arg));
-  if (matches.length > 1) throw new ExitError(`Name for ${singular} must be unique. (found ${matches.length} matches).`);
-  if (matches.length === 0) throw new ExitError(`No matching ${singular} found.`);
-  return matches[0];
-}
-
-const bodyOpts = (cmd: Command) => cmd.option("-b, --body <json>", "JSON body; FILE:<path> reads a file").option("-s, --set <k=v>", "set a (dotted) field", collect, []);
-const bodyFromOpts = (opts: Record<string, any>) => {
-  const body = parseBody(opts.body, opts.set);
-  if (body === undefined) throw new ExitError("Provide -b and/or -s");
-  return body;
-};
 
 export function registerAuthServers(program: Command, ctx: Ctx): Command {
   const g = defineResource(program, ctx, AUTH_SERVERS);

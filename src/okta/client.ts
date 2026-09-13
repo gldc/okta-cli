@@ -3,7 +3,7 @@ import { CommunicationError, OktaApiError, type OktaErrorBody } from "./errors";
 
 export type Method = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 export type Query = Record<string, string | number | boolean | undefined>;
-export interface RequestOptions { query?: Query; body?: unknown; basePath?: string }
+export interface RequestOptions { query?: Query; body?: unknown; basePath?: string; headers?: Record<string, string> }
 export interface ClientOptions {
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
@@ -78,7 +78,7 @@ export class OktaClient {
 
   async request(method: Method, path: string, opts: RequestOptions = {}): Promise<Response> {
     const url = this.buildUrl(path, opts.query, opts.basePath);
-    const init: RequestInit = { method, headers: this.headers };
+    const init: RequestInit = { method, headers: opts.headers ? { ...this.headers, ...opts.headers } : this.headers };
     if (opts.body !== undefined && method !== "GET") init.body = JSON.stringify(opts.body);
     if (this.verbosity >= 1) this.log(`> ${method} ${url}`);
     if (this.verbosity >= 3 && init.body) this.log(`> ${init.body}`);

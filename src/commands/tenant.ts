@@ -1,7 +1,6 @@
 import { Option, type Command } from "commander";
 import type { Ctx } from "../cli/context";
-import { action, addOutputOptions, addVerbose, collect, int, subgroup } from "../cli/options";
-import { parseBody } from "../lib/body";
+import { action, addOutputOptions, addVerbose, bodyFromOpts, bodyOpts, int, subgroup } from "../cli/options";
 import type { OktaClient } from "../okta/client";
 import { ExitError } from "../okta/errors";
 import { defineResource, resourceGet, type ResourceSpec } from "./resource";
@@ -50,13 +49,6 @@ export const REALM_ASSIGNMENTS: ResourceSpec = {
 export const CAPTCHAS: ResourceSpec = {
   name: "captchas", description: "CAPTCHA instances", path: "/captchas", singular: "CAPTCHA instance",
   nameField: "name", defaultFields: "id,name,type,siteKey",
-};
-
-const bodyOpts = (cmd: Command) => cmd.option("-b, --body <json>", "JSON body; FILE:<path> reads a file").option("-s, --set <k=v>", "set a (dotted) field", collect, []);
-const bodyFromOpts = (opts: Record<string, any>) => {
-  const body = parseBody(opts.body, opts.set);
-  if (body === undefined) throw new ExitError("Provide -b and/or -s");
-  return body;
 };
 
 export function registerTenant(program: Command, ctx: Ctx): void {

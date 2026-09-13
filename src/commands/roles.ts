@@ -1,6 +1,6 @@
 import { Option, type Command } from "commander";
 import type { Ctx } from "../cli/context";
-import { action, addOutputOptions, addVerbose, collect } from "../cli/options";
+import { action, addOutputOptions, addVerbose, bodyOpts } from "../cli/options";
 import { parseBody } from "../lib/body";
 import { getGroup, getUser } from "../lib/lookup";
 import type { OktaClient } from "../okta/client";
@@ -13,9 +13,9 @@ const PERMISSION_FIELDS = "label,created,lastUpdated";
 const SUBSCRIPTION_FIELDS = "notificationType,status,channels";
 const BINDING_FIELDS = "id";
 const RESOURCE_FIELDS = "id,orn,created";
-const bodyOpts = (cmd: Command) => cmd.option("-b, --body <json>", "JSON body; FILE:<path> reads a file").option("-s, --set <k=v>", "set a (dotted) field", collect, []);
 
 export const CUSTOM_ROLES: ResourceSpec = { name: "roles", description: "Admin roles: custom roles, resource sets, assignees", path: "/iam/roles", singular: "custom role", nameField: "label", defaultFields: "id,label,description", listKey: "roles" };
+const RESOURCE_SETS: ResourceSpec = { name: "resource-sets", description: "Resource sets", path: "/iam/resource-sets", singular: "resource set", nameField: "label", defaultFields: "id,label,description", listKey: "resource-sets" };
 
 export function roleAssignmentBody(opts: { type: string; role?: string; resourceSet?: string }): Record<string, unknown> {
   if (opts.type !== "CUSTOM") return { type: opts.type };
@@ -88,8 +88,14 @@ export function registerRoles(program: Command, ctx: Ctx, groups: { users: Comma
   }
 
   addOutputOptions(addVerbose(g.command("resource-set-bindings").description("List the role bindings on a resource set").argument("<resourceSet>")), BINDING_FIELDS)
-    .action(action(ctx, async (client, _o, resourceSetArg) => client.getAll(`/iam/resource-sets/${encodeURIComponent(resourceSetArg)}/bindings`, { listKey: "roles" })));
+    .action(action(ctx, async (client, _o, resourceSetArg) => {
+      const rs = await resourceGet(client, RESOURCE_SETS, resourceSetArg);
+      return client.getAll(`/iam/resource-sets/${rs.id}/bindings`, { listKey: "roles" });
+    }));
 
   addOutputOptions(addVerbose(g.command("resource-set-resources").description("List the resources in a resource set").argument("<resourceSet>")), RESOURCE_FIELDS)
-    .action(action(ctx, async (client, _o, resourceSetArg) => client.getAll(`/iam/resource-sets/${encodeURIComponent(resourceSetArg)}/resources`, { listKey: "resources" })));
+    .action(action(ctx, async (client, _o, resourceSetArg) => {
+      const rs = await resourceGet(client, RESOURCE_SETS, resourceSetArg);
+      return client.getAll(`/iam/resource-sets/${rs.id}/resources`, { listKey: "resources" });
+    }));
 }

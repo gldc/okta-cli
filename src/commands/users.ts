@@ -215,10 +215,10 @@ export function registerUsers(program: Command, ctx: Ctx): Command {
   addVerbose(lookupFieldOpt(g.command("grants-revoke").description("Revoke a user's grants: all, all for a client, or one by id").argument("<user>").argument("[grantId]")
     .option("--client <clientId>", "revoke all grants for this client (cannot combine with a grant id)")))
     .action(action(ctx, async (client, opts, user, grantId?: string) => {
-      const u = await getUser(client, user, opts.userLookupField);
       // Deviation from the plan: there's no endpoint for revoking a single grant scoped to
       // a client - /users/{id}/clients/{clientId}/grants only supports revoking all of them.
       if (opts.client && grantId) throw new ExitError("Provide either --client or a grant id, not both");
+      const u = await getUser(client, user, opts.userLookupField);
       if (grantId) {
         await client.json("DELETE", `/users/${u.id}/grants/${grantId}`);
         return `grant ${grantId} revoked from user ${u.id} (${u.profile.login})`;

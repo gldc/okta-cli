@@ -181,7 +181,7 @@ export function registerApps(program: Command, ctx: Ctx): Command {
     .requiredOption("--kid <kid>", "signing key id to preview"))
     .action(action(ctx, async (client, opts, appArg) => {
       const app = await getApp(client, appArg);
-      const rsp = await client.request("GET", `/apps/${app.id}/sso/saml/metadata`, { query: { kid: opts.kid } });
+      const rsp = await client.request("GET", `/apps/${app.id}/sso/saml/metadata`, { query: { kid: opts.kid }, headers: { Accept: "application/xml" } });
       return rsp.text();
     }));
 

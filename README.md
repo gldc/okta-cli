@@ -78,6 +78,8 @@ $ okta-cli inlinehooks list                           # list inline hooks
 
 # new in 19.1.0
 $ okta-cli auth-servers scopes default                # list a custom authorization server's scopes
+$ okta-cli devices list --search 'status eq "ACTIVE"' # list active devices
+$ okta-cli mappings list --source-id <id>             # list profile mappings for a source
 
 $ okta-cli version                                    # print version and exit
 ```

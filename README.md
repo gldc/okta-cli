@@ -212,6 +212,8 @@ have done):
   argument.
 - `config current-context` prints `No profile set.` instead of silently printing nothing.
 - `groups list -a` is a flag (`--all`) instead of erroring because it expected a value.
+- `pw set -g`'s generated passwords now include an uppercase first letter and a trailing digit
+  so they satisfy Okta's default password policy (18.1.2 generated all-lowercase words).
 
 Other intentional deviations, all judgment calls where 18.1.2's behavior wasn't worth
 matching exactly:

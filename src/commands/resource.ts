@@ -10,6 +10,23 @@ export interface ListOption { flags: string; param: string; description: string;
 export interface ResourceSpec {
   name: string; description: string; path: string; singular: string; nameField: string; defaultFields: string;
   lifecycle?: boolean; deletable?: boolean; replaceable?: boolean; creatable?: boolean; listKey?: string; listOptions?: ListOption[]; sortBy?: string; idField?: string;
+  // Extra top-level read-only fields to strip from the GET representation before it's used as
+  // the PUT merge base in `replace` (on top of the fields every resource strips - see
+  // REPLACE_OMIT_DEFAULT below).
+  replaceOmit?: string[];
+  // Last chance to adjust a `replace` body (e.g. fetch data the PUT requires but the merge
+  // can't produce, or reject a body missing a write-only field) before it's sent.
+  beforeReplace?: (client: OktaClient, existing: any, body: Record<string, unknown>) => Promise<Record<string, unknown>>;
+}
+
+// Read-only fields every resource's GET representation carries but no PUT (replace) body
+// accepts - stripped from the merge base before `deepMerge(existing, body)`.
+const REPLACE_OMIT_DEFAULT = ["id", "created", "lastUpdated", "createdBy", "lastUpdatedBy", "_links", "_embedded"];
+
+export function omitFields(obj: Record<string, unknown>, fields: string[]): Record<string, unknown> {
+  const out = { ...obj };
+  for (const f of fields) delete out[f];
+  return out;
 }
 
 const optKey = (flags: string) => {
@@ -115,7 +132,11 @@ export function defineResource(parent: Command, ctx: Ctx, spec: ResourceSpec): C
       .action(action(ctx, async (client, opts, nameOrId) => {
         const existing = await resourceGet(client, spec, nameOrId, lookupQuery(spec, opts));
         let body = bodyFromOpts(opts);
-        if (!opts.body && isPlainObject(body)) body = deepMerge(existing, body);
+        if (!opts.body && isPlainObject(body)) {
+          const base = omitFields(existing, [...REPLACE_OMIT_DEFAULT, ...(spec.replaceOmit ?? [])]);
+          body = deepMerge(base, body);
+        }
+        if (spec.beforeReplace) body = await spec.beforeReplace(client, existing, body as Record<string, unknown>);
         return client.json("PUT", `${spec.path}/${idOf(spec, existing)}`, { body });
       }));
   }

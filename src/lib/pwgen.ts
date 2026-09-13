@@ -6,9 +6,11 @@ export function generatePassword(numWords: number, lang = "en"): string[] {
 }
 
 export function buildPassphrase(words: string[], minLength: number): string {
-  let pw = words.join(" ");
-  for (let i = 3; i <= words.length; i++) {
-    pw = words.slice(0, i).join(" ");
+  const capitalized = words.length > 0 ? [`${words[0]!.charAt(0).toUpperCase()}${words[0]!.slice(1)}`, ...words.slice(1)] : words;
+  const digit = String(Math.floor(Math.random() * 10));
+  let pw = `${capitalized.join(" ")}${digit}`;
+  for (let i = 3; i <= capitalized.length; i++) {
+    pw = `${capitalized.slice(0, i).join(" ")}${digit}`;
     if (pw.length >= minLength) break;
   }
   return pw;

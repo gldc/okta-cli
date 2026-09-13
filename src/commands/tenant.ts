@@ -22,6 +22,9 @@ export const MAPPINGS: ResourceSpec = {
 export const EMAIL_DOMAINS: ResourceSpec = {
   name: "email-domains", description: "Custom email sender domains", path: "/email-domains", singular: "email domain",
   nameField: "domain", defaultFields: "id,domain,displayName,userName,validationStatus",
+  // Okta's replace (UpdateEmailDomain/BaseEmailDomain schema) accepts only displayName/userName;
+  // these are DNS-verification-derived read-only fields that the GET representation carries.
+  replaceOmit: ["dnsValidationRecords", "domain", "validationStatus", "validationSubdomain"],
 };
 
 export const BEHAVIORS: ResourceSpec = {
@@ -46,9 +49,17 @@ export const REALM_ASSIGNMENTS: ResourceSpec = {
   nameField: "name", defaultFields: "id,status,priority,name,isDefault", lifecycle: true, sortBy: "priority",
 };
 
+// `secretKey` is write-only - Okta never returns it, so a -s/-S merge with the GET
+// representation can only produce a body without it (unless the caller passes -s secretKey=...).
+async function requireCaptchaSecretKey(_client: OktaClient, _existing: any, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (!body.secretKey) throw new ExitError("captchas replace needs -s secretKey=<key> (Okta never returns it)");
+  return body;
+}
+
 export const CAPTCHAS: ResourceSpec = {
   name: "captchas", description: "CAPTCHA instances", path: "/captchas", singular: "CAPTCHA instance",
   nameField: "name", defaultFields: "id,name,type,siteKey",
+  beforeReplace: requireCaptchaSecretKey,
 };
 
 // Deviation from the plan: CustomTelephonyProviderCredentialResponse has no `name` field

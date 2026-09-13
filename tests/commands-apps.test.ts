@@ -64,4 +64,37 @@ describe("apps", () => {
     await runTest(["apps", "add", "-n", "bookmark", "-l", "New", "-s", "sa.url=http://x"], t.ctx);
     expect(srv.calls.at(-1)!.body).toEqual({ name: "bookmark", label: "New", signOnMode: "BOOKMARK", settings: { app: { requestIntegration: "false", url: "http://x" } } });
   });
+
+  test("add with -S sets array fields (OIDC client redirect_uris/grant_types), same prefix shortcuts as -s", async () => {
+    srv = startServer([{ method: "POST", path: "/api/v1/apps", body: { id: "0oa9", name: "oidc_client", label: "x" } }]);
+    const t = testCtx(srv.url);
+    await runTest([
+      "apps", "add", "-n", "oidc_client", "-l", "x",
+      "-S", "c.oauthClient.redirect_uris=https://a/cb,https://b/cb",
+      "-S", "c.oauthClient.grant_types=authorization_code",
+    ], t.ctx);
+    expect(srv.calls.at(-1)!.body).toEqual({
+      name: "oidc_client", label: "x", signOnMode: "OPENID_CONNECT",
+      credentials: { oauthClient: { redirect_uris: ["https://a/cb", "https://b/cb"], grant_types: ["authorization_code"] } },
+    });
+  });
+
+  test("add with -b JSON body, then -s/-S merged on top", async () => {
+    srv = startServer([{ method: "POST", path: "/api/v1/apps", body: { id: "0oa9" } }]);
+    const t = testCtx(srv.url);
+    await runTest([
+      "apps", "add", "-b", '{"credentials":{"oauthClient":{"response_types":["code"]}}}',
+      "-S", "c.oauthClient.grant_types=authorization_code",
+      "-s", "c.oauthClient.token_endpoint_auth_method=client_secret_basic",
+    ], t.ctx);
+    expect(srv.calls.at(-1)!.body).toEqual({
+      credentials: {
+        oauthClient: {
+          response_types: ["code"],
+          grant_types: ["authorization_code"],
+          token_endpoint_auth_method: "client_secret_basic",
+        },
+      },
+    });
+  });
 });

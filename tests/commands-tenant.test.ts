@@ -86,6 +86,15 @@ describe("email-domains", () => {
     await runTest(["email-domains", "dns", "eds1"], t.ctx);
     expect(t.out.at(-1)).toBe("TXT  mail.example.com  abc123  \n");
   });
+
+  test("replace strips dnsValidationRecords/domain/validationStatus/validationSubdomain - Okta's replace accepts only displayName/userName", async () => {
+    srv = startServer([emailDomainByIdRoute, { method: "PUT", path: "/api/v1/email-domains/eds1", body: emailDomain }]);
+    const t = testCtx(srv.url);
+    await runTest(["email-domains", "replace", "eds1", "-s", "displayName=New Name"], t.ctx);
+    const body = srv.calls.at(-1)!.body;
+    for (const f of ["id", "dnsValidationRecords", "domain", "validationStatus", "validationSubdomain"]) expect(body).not.toHaveProperty(f);
+    expect(body).toEqual({ displayName: "New Name", userName: "no-reply" });
+  });
 });
 
 describe("behaviors", () => {
@@ -141,11 +150,28 @@ describe("realm-assignments", () => {
 });
 
 describe("captchas", () => {
+  const captchaByIdRoute = { method: "GET" as const, path: "/api/v1/captchas/cap1", body: { id: "cap1", name: "Org CAPTCHA", type: "HCAPTCHA", siteKey: "site123" } };
+
   test("list prints the default fields", async () => {
     srv = startServer([{ method: "GET", path: "/api/v1/captchas", body: [{ id: "cap1", name: "Org CAPTCHA", type: "HCAPTCHA", siteKey: "site123" }] }]);
     const t = testCtx(srv.url);
     await runTest(["captchas", "list"], t.ctx);
     expect(t.out.at(-1)).toBe("cap1  Org CAPTCHA  HCAPTCHA  site123  \n");
+  });
+
+  test("replace without secretKey errors locally - Okta never returns the write-only field to merge from", async () => {
+    srv = startServer([captchaByIdRoute]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["captchas", "replace", "cap1", "-s", "name=Renamed"], t.ctx)).not.toBe(0);
+    expect(t.err.join("")).toContain("captchas replace needs -s secretKey=<key>");
+    expect(srv.calls.some((c) => c.method === "PUT")).toBe(false);
+  });
+
+  test("replace with -s secretKey succeeds", async () => {
+    srv = startServer([captchaByIdRoute, { method: "PUT", path: "/api/v1/captchas/cap1", body: { id: "cap1" } }]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["captchas", "replace", "cap1", "-s", "secretKey=shh"], t.ctx)).toBe(0);
+    expect(srv.calls.at(-1)!.body).toEqual({ name: "Org CAPTCHA", type: "HCAPTCHA", siteKey: "site123", secretKey: "shh" });
   });
 });
 

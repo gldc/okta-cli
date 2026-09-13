@@ -146,6 +146,32 @@ describe("roles", () => {
   });
 });
 
+describe("roles replace", () => {
+  test("replace strips isCloneable/id/created/lastUpdated and fetches permissions when the merged body lacks them", async () => {
+    srv = startServer([
+      { method: "GET", path: "/api/v1/iam/roles/cr1", body: { id: "cr1", label: "Custom Role", description: "d", isCloneable: false, created: "2020", lastUpdated: "2021" } },
+      { method: "GET", path: "/api/v1/iam/roles/cr1/permissions", body: { permissions: [{ label: "okta.users.read" }, { label: "okta.users.manage" }] } },
+      { method: "PUT", path: "/api/v1/iam/roles/cr1", body: { id: "cr1" } },
+    ]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["roles", "replace", "cr1", "-s", "label=Renamed"], t.ctx)).toBe(0);
+    const body = srv.calls.at(-1)!.body;
+    for (const f of ["id", "created", "lastUpdated", "isCloneable"]) expect(body).not.toHaveProperty(f);
+    expect(body).toEqual({ label: "Renamed", description: "d", permissions: ["okta.users.read", "okta.users.manage"] });
+  });
+
+  test("replace with -b permissions already set skips the permissions fetch", async () => {
+    srv = startServer([
+      { method: "GET", path: "/api/v1/iam/roles/cr1", body: { id: "cr1", label: "Custom Role", description: "d" } },
+      { method: "PUT", path: "/api/v1/iam/roles/cr1", body: { id: "cr1" } },
+    ]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["roles", "replace", "cr1", "-b", '{"permissions":["okta.apps.read"]}'], t.ctx)).toBe(0);
+    expect(srv.calls.length).toBe(2); // GET existing role + PUT - no GET .../permissions call
+    expect(srv.calls.at(-1)!.body).toEqual({ permissions: ["okta.apps.read"] });
+  });
+});
+
 describe("roles governance", () => {
   test("bundles list/get, entitlements, values, opt-in/out", async () => {
     srv = startServer([

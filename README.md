@@ -237,7 +237,8 @@ matching exactly:
   first before falling back to a profile-field search, same as 18.1.2.
 
 As of 19.3.0, the CLI covers every path family of the pinned spec that has documented
-operations, except end-user-facing flows.
+operations, except end-user-facing flows and group-rules-by-user
+(`/groups/{groupId}/users/{userId}/group-rules`, declared in the spec with no operations).
 
 ## References
 

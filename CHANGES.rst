@@ -14,7 +14,7 @@ v19.3.0
 * New: idps keys/csrs/signing-keys (+ clone/generate), authenticators methods/aaguids/
   verify-rp-id, auth-servers associated servers/resource keys/rule lifecycle, domains
   certificate, org yubikeys, log-streams schemas, telephony-providers, devices os-accounts,
-  policies app/mapping, groups user-rules, identity-sources group management
+  policies mapping/mapping-delete, identity-sources group management
 
 v19.2.0
 =======

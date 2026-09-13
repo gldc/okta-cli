@@ -16,13 +16,16 @@ export function startServer(routes: Route[]) {
     port: 0,
     async fetch(req) {
       const url = new URL(req.url);
+      // Cloned before text() consumes the body, so a route.handler can still read it itself
+      // (e.g. a multipart upload's await req.formData()).
+      const raw = req.clone();
       const text = await req.text();
       let bodyJson: unknown = undefined;
       if (text) { try { bodyJson = JSON.parse(text); } catch { bodyJson = text; } }
       calls.push({ method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), body: bodyJson });
       const route = table.find((r) => r.method === req.method && (typeof r.path === "string" ? r.path === url.pathname : r.path.test(url.pathname)));
       if (!route) return Response.json({ errorSummary: `no route for ${req.method} ${url.pathname}` }, { status: 500 });
-      if (route.handler) return route.handler(req, url, bodyJson);
+      if (route.handler) return route.handler(raw, url, bodyJson);
       const status = route.status ?? (route.body === undefined ? 204 : 200);
       const headers = { ...(route.headers ?? {}) };
       if (route.body === undefined) return new Response(null, { status, headers });

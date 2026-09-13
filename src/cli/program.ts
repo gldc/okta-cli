@@ -1,6 +1,7 @@
 import { Command, CommanderError } from "commander";
 import { registerApps } from "../commands/apps";
 import { registerAuthServers } from "../commands/auth-servers";
+import { registerBrands } from "../commands/brands";
 import { registerAuthenticators, registerUserSecurity } from "../commands/authenticators";
 import { registerConfig } from "../commands/config";
 import { registerDevices } from "../commands/devices";
@@ -52,6 +53,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerPlatform(program, ctx);
   registerTenant(program, ctx);
   registerAuthServers(program, ctx);
+  registerBrands(program, ctx);
   registerDevices(program, ctx, usersCmd);
   registerInlinehooks(program, ctx);
   registerSchemas(program, ctx, usersCmd);

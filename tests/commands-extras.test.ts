@@ -18,6 +18,8 @@ test("spec paths", () => {
     `${CUSTOM_ROLES.path}/r/permissions`, `${CUSTOM_ROLES.path}/r/permissions/okta.users.read`,
     "/roles/SUPER_ADMIN/subscriptions", "/roles/SUPER_ADMIN/subscriptions/USER_LOCKED_OUT", "/roles/SUPER_ADMIN/subscriptions/USER_LOCKED_OUT/subscribe", "/roles/SUPER_ADMIN/subscriptions/USER_LOCKED_OUT/unsubscribe",
     "/iam/resource-sets/rs1/bindings", "/iam/resource-sets/rs1/resources",
+    "/iam/resource-sets/rs1/bindings/cr1", "/iam/resource-sets/rs1/bindings/cr1/members", "/iam/resource-sets/rs1/bindings/cr1/members/00u1",
+    "/iam/resource-sets/rs1/resources/res1",
   ]) expect(knownPath(p), p).toBe(true);
 });
 
@@ -184,6 +186,7 @@ describe("users clients / grants / subscriptions", () => {
   test("subscriptions lists, subscribe/unsubscribe post to the right path", async () => {
     srv = startServer([
       { method: "GET", path: "/api/v1/users/00u00000000000000001/subscriptions", body: [{ notificationType: "USER_LOCKED_OUT", status: "subscribed", channels: ["email"] }] },
+      { method: "GET", path: "/api/v1/users/00u00000000000000001/subscriptions/USER_LOCKED_OUT", body: { notificationType: "USER_LOCKED_OUT", status: "subscribed", channels: ["email"] } },
       { method: "POST", path: "/api/v1/users/00u00000000000000001/subscriptions/USER_LOCKED_OUT/subscribe" },
       { method: "POST", path: "/api/v1/users/00u00000000000000001/subscriptions/USER_LOCKED_OUT/unsubscribe" },
       ...standardRoutes(),
@@ -191,6 +194,9 @@ describe("users clients / grants / subscriptions", () => {
     const t = testCtx(srv.url);
     expect(await runTest(["users", "subscriptions", "bob@x.com", "-j"], t.ctx)).toBe(0);
     expect(JSON.parse(t.out.at(-1)!)[0].notificationType).toBe("USER_LOCKED_OUT");
+
+    expect(await runTest(["users", "subscription", "bob@x.com", "USER_LOCKED_OUT", "--output-fields", "status"], t.ctx)).toBe(0);
+    expect(t.out.at(-1)).toBe("subscribed  \n");
 
     expect(await runTest(["users", "subscribe", "bob@x.com", "USER_LOCKED_OUT"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("user 00u00000000000000001 (bob@x.com) subscribed to USER_LOCKED_OUT\n");
@@ -233,12 +239,16 @@ describe("roles permissions / subscriptions / resource-sets", () => {
   test("subscriptions lists, subscribe/unsubscribe by role type", async () => {
     srv = startServer([
       { method: "GET", path: "/api/v1/roles/SUPER_ADMIN/subscriptions", body: [{ notificationType: "USER_LOCKED_OUT", status: "unsubscribed", channels: ["email"] }] },
+      { method: "GET", path: "/api/v1/roles/SUPER_ADMIN/subscriptions/USER_LOCKED_OUT", body: { notificationType: "USER_LOCKED_OUT", status: "unsubscribed", channels: ["email"] } },
       { method: "POST", path: "/api/v1/roles/SUPER_ADMIN/subscriptions/USER_LOCKED_OUT/subscribe", status: 200 },
       { method: "POST", path: "/api/v1/roles/SUPER_ADMIN/subscriptions/USER_LOCKED_OUT/unsubscribe", status: 200 },
     ]);
     const t = testCtx(srv.url);
     expect(await runTest(["roles", "subscriptions", "SUPER_ADMIN", "-j"], t.ctx)).toBe(0);
     expect(JSON.parse(t.out.at(-1)!)[0].notificationType).toBe("USER_LOCKED_OUT");
+
+    expect(await runTest(["roles", "subscription", "SUPER_ADMIN", "USER_LOCKED_OUT", "--output-fields", "status"], t.ctx)).toBe(0);
+    expect(t.out.at(-1)).toBe("unsubscribed  \n");
 
     expect(await runTest(["roles", "subscribe", "SUPER_ADMIN", "USER_LOCKED_OUT"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("role SUPER_ADMIN subscribed to USER_LOCKED_OUT\n");
@@ -263,6 +273,64 @@ describe("roles permissions / subscriptions / resource-sets", () => {
     expect(srv.calls.at(-1)!.method).toBe("GET");
     expect(srv.calls.at(-1)!.path).toBe("/api/v1/iam/resource-sets/rs1/resources");
     expect(JSON.parse(t.out.at(-1)!)[0].id).toBe("res1");
+  });
+
+  test("resource-set-binding(-add,-delete) and members", async () => {
+    srv = startServer([
+      { method: "GET", path: "/api/v1/iam/resource-sets/rs1", body: { id: "rs1", label: "All apps" } },
+      { method: "GET", path: "/api/v1/iam/resource-sets/rs1/bindings/cr1", body: { id: "cr1" } },
+      { method: "POST", path: "/api/v1/iam/resource-sets/rs1/bindings", body: {} },
+      { method: "DELETE", path: "/api/v1/iam/resource-sets/rs1/bindings/cr1" },
+      { method: "GET", path: "/api/v1/iam/resource-sets/rs1/bindings/cr1/members", body: { members: [{ id: "00u1", created: "2026-01-01T00:00:00.000Z", lastUpdated: "2026-01-01T00:00:00.000Z" }] } },
+      { method: "GET", path: "/api/v1/iam/resource-sets/rs1/bindings/cr1/members/00u1", body: { id: "00u1", created: "2026-01-01T00:00:00.000Z", lastUpdated: "2026-01-01T00:00:00.000Z" } },
+      { method: "PATCH", path: "/api/v1/iam/resource-sets/rs1/bindings/cr1/members", body: {} },
+      { method: "DELETE", path: "/api/v1/iam/resource-sets/rs1/bindings/cr1/members/00u1" },
+    ]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["roles", "resource-set-binding", "rs1", "cr1", "-j"], t.ctx)).toBe(0);
+    expect(JSON.parse(t.out.at(-1)!).id).toBe("cr1");
+
+    expect(await runTest(["roles", "resource-set-binding-add", "rs1", "-b", '{"role":"cr1","members":["https://x/api/v1/users/00u1"]}'], t.ctx)).toBe(0);
+    expect(srv.calls.at(-1)!.body).toEqual({ role: "cr1", members: ["https://x/api/v1/users/00u1"] });
+
+    expect(await runTest(["roles", "resource-set-binding-delete", "rs1", "cr1"], t.ctx)).toBe(0);
+    expect(t.out.at(-1)).toBe("role resource set binding cr1 deleted from resource set rs1 (All apps)\n");
+
+    expect(await runTest(["roles", "resource-set-binding-members", "rs1", "cr1", "--output-fields", "id"], t.ctx)).toBe(0);
+    expect(t.out.at(-1)).toBe("00u1  \n");
+
+    expect(await runTest(["roles", "resource-set-binding-member", "rs1", "cr1", "00u1", "--output-fields", "id"], t.ctx)).toBe(0);
+    expect(t.out.at(-1)).toBe("00u1  \n");
+
+    expect(await runTest(["roles", "resource-set-binding-members-add", "rs1", "cr1", "-b", '{"additions":["https://x/api/v1/users/00u2"]}'], t.ctx)).toBe(0);
+    expect(srv.calls.at(-1)!.body).toEqual({ additions: ["https://x/api/v1/users/00u2"] });
+
+    expect(await runTest(["roles", "resource-set-binding-member-delete", "rs1", "cr1", "00u1"], t.ctx)).toBe(0);
+    expect(t.out.at(-1)).toBe("member 00u1 removed from role resource set binding cr1 on resource set rs1 (All apps)\n");
+  });
+
+  test("resource-set-resource(-set,-delete) and resources-add", async () => {
+    srv = startServer([
+      { method: "GET", path: "/api/v1/iam/resource-sets/rs1", body: { id: "rs1", label: "All apps" } },
+      { method: "GET", path: "/api/v1/iam/resource-sets/rs1/resources/res1", body: { id: "res1", orn: "orn:okta:apps:x:apps:0oa1" } },
+      { method: "PUT", path: "/api/v1/iam/resource-sets/rs1/resources/res1", body: { id: "res1", orn: "orn:okta:apps:x:apps:0oa1" } },
+      { method: "DELETE", path: "/api/v1/iam/resource-sets/rs1/resources/res1" },
+      { method: "PATCH", path: "/api/v1/iam/resource-sets/rs1/resources", body: {} },
+    ]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["roles", "resource-set-resource", "rs1", "res1", "-j"], t.ctx)).toBe(0);
+    expect(JSON.parse(t.out.at(-1)!).id).toBe("res1");
+
+    expect(await runTest(["roles", "resource-set-resource-set", "rs1", "res1", "-b", '{"conditions":{"include":["x"]}}', "-j"], t.ctx)).toBe(0);
+    expect(srv.calls.at(-1)!.method).toBe("PUT");
+    expect(srv.calls.at(-1)!.body).toEqual({ conditions: { include: ["x"] } });
+
+    expect(await runTest(["roles", "resource-set-resource-delete", "rs1", "res1"], t.ctx)).toBe(0);
+    expect(t.out.at(-1)).toBe("resource res1 deleted from resource set rs1 (All apps)\n");
+
+    expect(await runTest(["roles", "resource-set-resources-add", "rs1", "-b", '{"additions":["https://x/api/v1/apps/0oa2"]}'], t.ctx)).toBe(0);
+    expect(srv.calls.at(-1)!.method).toBe("PATCH");
+    expect(srv.calls.at(-1)!.body).toEqual({ additions: ["https://x/api/v1/apps/0oa2"] });
   });
 
   test("resource-set-bindings falls back to a unique label substring match", async () => {

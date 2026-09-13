@@ -131,6 +131,17 @@ describe("security-events send", () => {
     expect(srv.calls.at(-1)!.body).toBe("header.payload.signature");
     expect(t.out.at(-1)).toBe("security event token published\n");
   });
+
+  test("trims a trailing newline from the JWT, both from the literal and from FILE:", async () => {
+    srv = startServer([{ method: "POST", path: "/security/api/v1/security-events" }]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["security-events", "send", "-b", "header.payload.signature\n"], t.ctx)).toBe(0);
+    expect(srv.calls.at(-1)!.body).toBe("header.payload.signature");
+    const f = `${import.meta.dir}/tmp-secevent.jwt`;
+    await Bun.write(f, "header.payload.signature\n");
+    expect(await runTest(["security-events", "send", "-b", `FILE:${f}`], t.ctx)).toBe(0);
+    expect(srv.calls.at(-1)!.body).toBe("header.payload.signature");
+  });
 });
 
 describe("threats", () => {

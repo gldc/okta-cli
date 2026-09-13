@@ -30,11 +30,11 @@ describe("roles", () => {
       { method: "GET", path: "/api/v1/iam/resource-sets", body: { "resource-sets": [{ id: "rs1", label: "All apps" }] } },
     ]);
     const t = testCtx(srv.url);
-    await runTest(["roles", "list", "--output-fields", "label"], t.ctx);
+    expect(await runTest(["roles", "list", "--output-fields", "label"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("Alpha  \nZebra  \n");
-    await runTest(["roles", "assignees", "--output-fields", "id"], t.ctx);
+    expect(await runTest(["roles", "assignees", "--output-fields", "id"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("00u1  \n");
-    await runTest(["roles", "resource-sets", "--output-fields", "id"], t.ctx);
+    expect(await runTest(["roles", "resource-sets", "--output-fields", "id"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("rs1  \n");
   });
 
@@ -47,7 +47,7 @@ describe("roles", () => {
       return Response.json({ roles: [{ id: "cr2", label: "Zebra", description: "d" }] });
     } });
     const t = testCtx(srv.url);
-    await runTest(["roles", "list", "--output-fields", "label"], t.ctx);
+    expect(await runTest(["roles", "list", "--output-fields", "label"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("Alpha  \nZebra  \n");
     expect(srv.calls.length).toBe(2);
   });
@@ -63,17 +63,17 @@ describe("roles", () => {
       ...standardRoutes(),
     ]);
     const t = testCtx(srv.url);
-    await runTest(["users", "roles", "bob@x.com", "--output-fields", "id,type"], t.ctx);
+    expect(await runTest(["users", "roles", "bob@x.com", "--output-fields", "id,type"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("ra1  APP_ADMIN  \n");
-    await runTest(["users", "assign-role", "bob@x.com", "-t", "READ_ONLY_ADMIN", "-j"], t.ctx);
+    expect(await runTest(["users", "assign-role", "bob@x.com", "-t", "READ_ONLY_ADMIN", "-j"], t.ctx)).toBe(0);
     expect(srv.calls.at(-1)!.body).toEqual({ type: "READ_ONLY_ADMIN" });
-    await runTest(["users", "unassign-role", "bob@x.com", "ra1"], t.ctx);
+    expect(await runTest(["users", "unassign-role", "bob@x.com", "ra1"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("role assignment ra1 removed from user 00u00000000000000001 (bob@x.com)\n");
-    await runTest(["groups", "roles", "engineering"], t.ctx);
+    expect(await runTest(["groups", "roles", "engineering"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("[]\n");
-    await runTest(["groups", "assign-role", "engineering", "-t", "CUSTOM", "--role", "cr1", "--resource-set", "rs1", "-j"], t.ctx);
+    expect(await runTest(["groups", "assign-role", "engineering", "-t", "CUSTOM", "--role", "cr1", "--resource-set", "rs1", "-j"], t.ctx)).toBe(0);
     expect(srv.calls.at(-1)!.body).toEqual({ type: "CUSTOM", role: "cr1", "resource-set": "rs1" });
-    await runTest(["groups", "unassign-role", "00g1", "ra3"], t.ctx);
+    expect(await runTest(["groups", "unassign-role", "00g1", "ra3"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("role assignment ra3 removed from group 00g1 (Engineering)\n");
     expect(await runTest(["users", "assign-role", "bob@x.com", "-t", "NOT_A_ROLE"], t.ctx)).not.toBe(0);
   });
@@ -90,17 +90,17 @@ describe("roles governance", () => {
       { method: "POST", path: "/api/v1/iam/governance/optOut", body: { optedIn: false } },
     ]);
     const t = testCtx(srv.url);
-    await runTest(["roles", "governance-bundles", "--output-fields", "id,name"], t.ctx);
+    expect(await runTest(["roles", "governance-bundles", "--output-fields", "id,name"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("b1  Bundle 1  \n");
-    await runTest(["roles", "governance-bundle", "b1", "--output-fields", "status"], t.ctx);
+    expect(await runTest(["roles", "governance-bundle", "b1", "--output-fields", "status"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("ACTIVE  \n");
-    await runTest(["roles", "governance-bundle-entitlements", "b1", "--output-fields", "id,role"], t.ctx);
+    expect(await runTest(["roles", "governance-bundle-entitlements", "b1", "--output-fields", "id,role"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("e1  r1  \n");
-    await runTest(["roles", "governance-entitlement-values", "b1", "e1", "--output-fields", "id"], t.ctx);
+    expect(await runTest(["roles", "governance-entitlement-values", "b1", "e1", "--output-fields", "id"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("v1  \n");
-    await runTest(["roles", "governance-opt-in", "-j"], t.ctx);
+    expect(await runTest(["roles", "governance-opt-in", "-j"], t.ctx)).toBe(0);
     expect(srv.calls.at(-1)!.path).toBe("/api/v1/iam/governance/optIn");
-    await runTest(["roles", "governance-opt-out", "-j"], t.ctx);
+    expect(await runTest(["roles", "governance-opt-out", "-j"], t.ctx)).toBe(0);
     expect(srv.calls.at(-1)!.path).toBe("/api/v1/iam/governance/optOut");
   });
 });

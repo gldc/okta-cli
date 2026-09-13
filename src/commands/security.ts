@@ -80,7 +80,7 @@ export function registerSecurity(program: Command, ctx: Ctx): void {
   const se = subgroup(program, "security-events", "Security event tokens (SETs)");
   addVerbose(se.command("send").description("Publish a security event token (SET JWT) to Okta").requiredOption("-b, --body <jwt>", "raw SET JWT; FILE:<path> reads a file"))
     .action(action(ctx, async (client, opts) => {
-      const jwt: string = opts.body.startsWith("FILE:") ? readFileSync(opts.body.slice(5), "utf8") : opts.body;
+      const jwt: string = (opts.body.startsWith("FILE:") ? readFileSync(opts.body.slice(5), "utf8") : opts.body).trim();
       await client.json("POST", "/security-events", { basePath: "/security/api/v1", body: jwt, headers: { "Content-Type": "application/secevent+jwt" } });
       return "security event token published";
     }));

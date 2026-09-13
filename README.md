@@ -89,10 +89,10 @@ $ okta-cli mappings list --source-id <id>             # list profile mappings fo
 
 # new in 19.2.0
 $ okta-cli brands themes default                      # list a brand's themes
-$ okta-cli ssf stream-status --stream-id <id>          # check an SSF stream's status
-$ okta-cli agent-pools list                            # list on-prem agent pools
-$ okta-cli pam service-accounts list                   # list privileged access service accounts
-$ okta-cli oin api-services                            # list OIN API service integration instances
+$ okta-cli ssf stream-status --stream-id <id>         # check an SSF stream's status
+$ okta-cli agent-pools list                           # list on-prem agent pools
+$ okta-cli pam service-accounts list                  # list privileged access service accounts
+$ okta-cli oin api-services                           # list OIN API service integration instances
 
 $ okta-cli version                                    # print version and exit
 ```
@@ -228,8 +228,8 @@ matching exactly:
 - `-f`/`--user-lookup-field` values other than `login` still probe `GET /users/{value}`
   first before falling back to a profile-field search, same as 18.1.2.
 
-As of 19.2.0, the CLI covers every path family of the pinned Okta management spec except
-end-user-facing (non-admin) flows.
+As of 19.2.0, the CLI covers every path family of the pinned spec that has documented
+operations, except end-user-facing flows.
 
 ## References
 

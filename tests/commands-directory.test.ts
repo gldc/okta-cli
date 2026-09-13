@@ -29,7 +29,7 @@ describe("agent-pools", () => {
   test("list transforms agents to agentCount and passes query", async () => {
     srv = startServer([{ method: "GET", path: "/api/v1/agentPools", body: [{ id: "p1", name: "region1", type: "AD", agents: [{}, {}] }] }]);
     const t = testCtx(srv.url);
-    await runTest(["agent-pools", "list", "--pool-type", "AD", "--limit-per-pool-type", "5", "--output-fields", "id,name,agentCount"], t.ctx);
+    expect(await runTest(["agent-pools", "list", "--pool-type", "AD", "--limit-per-pool-type", "5", "--output-fields", "id,name,agentCount"], t.ctx)).toBe(0);
     expect(srv.calls.at(-1)!.query).toEqual({ poolType: "AD", limitPerPoolType: "5" });
     expect(t.out.at(-1)).toBe("p1  region1  2  \n");
   });
@@ -43,16 +43,16 @@ describe("agent-pools", () => {
       { method: "DELETE", path: "/api/v1/agentPools/p1/updates/u1" },
     ]);
     const t = testCtx(srv.url);
-    await runTest(["agent-pools", "updates", "p1", "--output-fields", "id,status"], t.ctx);
+    expect(await runTest(["agent-pools", "updates", "p1", "--output-fields", "id,status"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("u1  SCHEDULED  \n");
-    await runTest(["agent-pools", "update", "p1", "u1", "-j"], t.ctx);
+    expect(await runTest(["agent-pools", "update", "p1", "u1", "-j"], t.ctx)).toBe(0);
     expect(JSON.parse(t.out.at(-1)!).id).toBe("u1");
-    await runTest(["agent-pools", "update-add", "p1", "-s", "name=new", "-j"], t.ctx);
+    expect(await runTest(["agent-pools", "update-add", "p1", "-s", "name=new", "-j"], t.ctx)).toBe(0);
     expect(srv.calls.at(-1)!.body).toEqual({ name: "new" });
-    await runTest(["agent-pools", "update-replace", "p1", "u1", "-s", "name=renamed", "-j"], t.ctx);
+    expect(await runTest(["agent-pools", "update-replace", "p1", "u1", "-s", "name=renamed", "-j"], t.ctx)).toBe(0);
     expect(srv.calls.at(-1)!.method).toBe("POST");
     expect(srv.calls.at(-1)!.path).toBe("/api/v1/agentPools/p1/updates/u1");
-    await runTest(["agent-pools", "update-delete", "p1", "u1"], t.ctx);
+    expect(await runTest(["agent-pools", "update-delete", "p1", "u1"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("agent pool update u1 deleted from pool p1\n");
   });
 
@@ -62,7 +62,7 @@ describe("agent-pools", () => {
     ]);
     const t = testCtx(srv.url);
     for (const verb of ["activate", "deactivate", "pause", "resume", "retry", "stop"]) {
-      await runTest(["agent-pools", `update-${verb}`, "p1", "u1", "-j"], t.ctx);
+      expect(await runTest(["agent-pools", `update-${verb}`, "p1", "u1", "-j"], t.ctx)).toBe(0);
       expect(srv.calls.at(-1)!.path).toBe(`/api/v1/agentPools/p1/updates/u1/${verb}`);
     }
   });
@@ -73,9 +73,9 @@ describe("agent-pools", () => {
       { method: "POST", path: "/api/v1/agentPools/p1/updates/settings", body: { poolId: "p1", agentType: "AD", continueOnError: true } },
     ]);
     const t = testCtx(srv.url);
-    await runTest(["agent-pools", "update-settings", "p1", "-j"], t.ctx);
+    expect(await runTest(["agent-pools", "update-settings", "p1", "-j"], t.ctx)).toBe(0);
     expect(JSON.parse(t.out.at(-1)!).poolId).toBe("p1");
-    await runTest(["agent-pools", "update-settings-set", "p1", "-s", "continueOnError=true", "-j"], t.ctx);
+    expect(await runTest(["agent-pools", "update-settings-set", "p1", "-s", "continueOnError=true", "-j"], t.ctx)).toBe(0);
     expect(srv.calls.at(-1)!.method).toBe("POST");
     expect(srv.calls.at(-1)!.body).toEqual({ continueOnError: "true" });
   });
@@ -91,15 +91,15 @@ describe("identity-sources", () => {
       { method: "POST", path: "/api/v1/identity-sources/s1/sessions/sess1/start-import" },
     ]);
     const t = testCtx(srv.url);
-    await runTest(["identity-sources", "sessions", "s1", "--output-fields", "id,status"], t.ctx);
+    expect(await runTest(["identity-sources", "sessions", "s1", "--output-fields", "id,status"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("sess1  CREATED  \n");
-    await runTest(["identity-sources", "session-add", "s1", "-j"], t.ctx);
+    expect(await runTest(["identity-sources", "session-add", "s1", "-j"], t.ctx)).toBe(0);
     expect(JSON.parse(t.out.at(-1)!).id).toBe("sess2");
-    await runTest(["identity-sources", "session", "s1", "sess1", "-j"], t.ctx);
+    expect(await runTest(["identity-sources", "session", "s1", "sess1", "-j"], t.ctx)).toBe(0);
     expect(JSON.parse(t.out.at(-1)!).status).toBe("CREATED");
-    await runTest(["identity-sources", "session-delete", "s1", "sess1"], t.ctx);
+    expect(await runTest(["identity-sources", "session-delete", "s1", "sess1"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("identity source session sess1 deleted\n");
-    await runTest(["identity-sources", "start-import", "s1", "sess1"], t.ctx);
+    expect(await runTest(["identity-sources", "start-import", "s1", "sess1"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("import started for identity source s1 session sess1\n");
   });
 
@@ -118,7 +118,7 @@ describe("identity-sources", () => {
       ["bulk-groups-upsert", "bulk-groups-upsert"], ["bulk-groups-delete", "bulk-groups-delete"],
       ["bulk-memberships-upsert", "bulk-group-memberships-upsert"], ["bulk-memberships-delete", "bulk-group-memberships-delete"],
     ] as const) {
-      await runTest(["identity-sources", cmd, "s1", "sess1", "-s", "x=1"], t.ctx);
+      expect(await runTest(["identity-sources", cmd, "s1", "sess1", "-s", "x=1"], t.ctx)).toBe(0);
       expect(srv.calls.at(-1)!.path).toBe(`/api/v1/identity-sources/s1/sessions/sess1/${wire}`);
       expect(srv.calls.at(-1)!.body).toEqual({ x: "1" });
       expect(t.out.at(-1)).toBe(`${cmd} uploaded for identity source s1 session sess1\n`);
@@ -132,11 +132,11 @@ describe("identity-sources", () => {
       { method: "GET", path: "/api/v1/identity-sources/s1/groups/g1/membership", body: { memberExternalIds: ["ext1", "ext2"] } },
     ]);
     const t = testCtx(srv.url);
-    await runTest(["identity-sources", "user", "s1", "ext1", "--output-fields", "externalId,profile.userName"], t.ctx);
+    expect(await runTest(["identity-sources", "user", "s1", "ext1", "--output-fields", "externalId,profile.userName"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("ext1  bob  \n");
-    await runTest(["identity-sources", "group", "s1", "g1", "--output-fields", "externalId,profile.profile.displayName"], t.ctx);
+    expect(await runTest(["identity-sources", "group", "s1", "g1", "--output-fields", "externalId,profile.profile.displayName"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("g1  Engineering  \n");
-    await runTest(["identity-sources", "group-members", "s1", "g1"], t.ctx);
+    expect(await runTest(["identity-sources", "group-members", "s1", "g1"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("ext1  \next2  \n");
   });
 });
@@ -153,17 +153,17 @@ describe("oauth-clients", () => {
       ...standardRoutes(),
     ]);
     const t = testCtx(srv.url);
-    await runTest(["oauth-clients", "roles", "c1", "--output-fields", "id,type"], t.ctx);
+    expect(await runTest(["oauth-clients", "roles", "c1", "--output-fields", "id,type"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("ra1  APP_ADMIN  \n");
-    await runTest(["oauth-clients", "assign-role", "c1", "-t", "READ_ONLY_ADMIN", "-j"], t.ctx);
+    expect(await runTest(["oauth-clients", "assign-role", "c1", "-t", "READ_ONLY_ADMIN", "-j"], t.ctx)).toBe(0);
     expect(srv.calls.at(-1)!.body).toEqual({ type: "READ_ONLY_ADMIN" });
-    await runTest(["oauth-clients", "unassign-role", "c1", "ra1"], t.ctx);
+    expect(await runTest(["oauth-clients", "unassign-role", "c1", "ra1"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("role assignment ra1 removed from OAuth 2.0 client c1\n");
-    await runTest(["oauth-clients", "role-targets", "c1", "ra1", "--output-fields", "id,profile.name"], t.ctx);
+    expect(await runTest(["oauth-clients", "role-targets", "c1", "ra1", "--output-fields", "id,profile.name"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("00g1  Engineering  \n");
-    await runTest(["oauth-clients", "role-target-add", "c1", "ra1", "-g", "00g1"], t.ctx);
+    expect(await runTest(["oauth-clients", "role-target-add", "c1", "ra1", "-g", "00g1"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("group 00g1 (Engineering) added as a target of role assignment ra1 on client c1\n");
-    await runTest(["oauth-clients", "role-target-delete", "c1", "ra1", "-g", "00g1"], t.ctx);
+    expect(await runTest(["oauth-clients", "role-target-delete", "c1", "ra1", "-g", "00g1"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("group 00g1 (Engineering) removed as a target of role assignment ra1 on client c1\n");
   });
 });
@@ -178,15 +178,15 @@ describe("ui-schemas", () => {
       { method: "DELETE", path: "/api/v1/meta/uischemas/uis1" },
     ]);
     const t = testCtx(srv.url);
-    await runTest(["ui-schemas", "list", "--output-fields", "id,uiSchema.type"], t.ctx);
+    expect(await runTest(["ui-schemas", "list", "--output-fields", "id,uiSchema.type"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("uis1  form  \n");
-    await runTest(["ui-schemas", "get", "uis1", "-j"], t.ctx);
+    expect(await runTest(["ui-schemas", "get", "uis1", "-j"], t.ctx)).toBe(0);
     expect(JSON.parse(t.out.at(-1)!).id).toBe("uis1");
-    await runTest(["ui-schemas", "add", "-s", "uiSchema.label=Enroll", "-j"], t.ctx);
+    expect(await runTest(["ui-schemas", "add", "-s", "uiSchema.label=Enroll", "-j"], t.ctx)).toBe(0);
     expect(srv.calls.at(-1)!.body).toEqual({ uiSchema: { label: "Enroll" } });
-    await runTest(["ui-schemas", "replace", "uis1", "-s", "uiSchema.label=Enroll", "-j"], t.ctx);
+    expect(await runTest(["ui-schemas", "replace", "uis1", "-s", "uiSchema.label=Enroll", "-j"], t.ctx)).toBe(0);
     expect(srv.calls.at(-1)!.method).toBe("PUT");
-    await runTest(["ui-schemas", "delete", "uis1"], t.ctx);
+    expect(await runTest(["ui-schemas", "delete", "uis1"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("UI schema uis1 (uis1) deleted\n");
   });
 });
@@ -198,9 +198,9 @@ describe("first-party-app", () => {
       { method: "PUT", path: "/api/v1/first-party-app-settings/admin-console", body: { settings: { x: 1 } } },
     ]);
     const t = testCtx(srv.url);
-    await runTest(["first-party-app", "get", "admin-console", "-j"], t.ctx);
+    expect(await runTest(["first-party-app", "get", "admin-console", "-j"], t.ctx)).toBe(0);
     expect(JSON.parse(t.out.at(-1)!).settings).toEqual({});
-    await runTest(["first-party-app", "set", "admin-console", "-s", "settings.x=1", "-j"], t.ctx);
+    expect(await runTest(["first-party-app", "set", "admin-console", "-s", "settings.x=1", "-j"], t.ctx)).toBe(0);
     expect(srv.calls.at(-1)!.method).toBe("PUT");
   });
 });
@@ -213,11 +213,11 @@ describe("directories", () => {
       { method: "GET", path: "/api/v1/directories/a1/groups/g1/query/r1", body: { id: "g1", profile: {} } },
     ]);
     const t = testCtx(srv.url);
-    await runTest(["directories", "groups-modify", "a1", "-s", "action=ADD"], t.ctx);
+    expect(await runTest(["directories", "groups-modify", "a1", "-s", "action=ADD"], t.ctx)).toBe(0);
     expect(srv.calls.at(-1)!.body).toEqual({ action: "ADD" });
-    await runTest(["directories", "group-query", "a1", "g1", "-s", "attributes=member", "-j"], t.ctx);
+    expect(await runTest(["directories", "group-query", "a1", "g1", "-s", "attributes=member", "-j"], t.ctx)).toBe(0);
     expect(JSON.parse(t.out.at(-1)!).resultId).toBe("r1");
-    await runTest(["directories", "group-query-result", "a1", "g1", "r1", "-j"], t.ctx);
+    expect(await runTest(["directories", "group-query-result", "a1", "g1", "r1", "-j"], t.ctx)).toBe(0);
     expect(JSON.parse(t.out.at(-1)!).id).toBe("g1");
   });
 });

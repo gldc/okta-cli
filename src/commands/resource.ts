@@ -70,8 +70,7 @@ export const CSR_PUBLISH_CONTENT_TYPES: Record<string, string> = {
 export async function publishCsr(client: OktaClient, path: string, file: string, format: string): Promise<any> {
   const bytes = new Uint8Array(await Bun.file(file).arrayBuffer());
   const rsp = await client.request("POST", path, { body: bytes, headers: { "Content-Type": CSR_PUBLISH_CONTENT_TYPES[format]! } });
-  const text = await rsp.text();
-  return text.length === 0 ? undefined : JSON.parse(text);
+  return client.parseJson(rsp);
 }
 
 // Resolves a nested (non-top-level) resource by id, falling back to a unique substring

@@ -292,6 +292,7 @@ describe("roles permissions / subscriptions / resource-sets", () => {
 
     expect(await runTest(["roles", "resource-set-binding-add", "rs1", "-b", '{"role":"cr1","members":["https://x/api/v1/users/00u1"]}'], t.ctx)).toBe(0);
     expect(srv.calls.at(-1)!.body).toEqual({ role: "cr1", members: ["https://x/api/v1/users/00u1"] });
+    expect(t.out.at(-1)).toBe("binding for role cr1 added to resource set rs1 (All apps)\n");
 
     expect(await runTest(["roles", "resource-set-binding-delete", "rs1", "cr1"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("role resource set binding cr1 deleted from resource set rs1 (All apps)\n");

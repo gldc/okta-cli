@@ -1,9 +1,9 @@
 import { Option, type Command } from "commander";
 import type { Ctx } from "../cli/context";
-import { action, addOutputOptions, addVerbose, bodyFromOpts, bodyOpts } from "../cli/options";
+import { action, addOutputOptions, addVerbose, bodyFromOpts, bodyOpts, int } from "../cli/options";
 import { parseBody } from "../lib/body";
 import { getGroup, getUser } from "../lib/lookup";
-import type { OktaClient, RequestOptions } from "../okta/client";
+import type { OktaClient, Query, RequestOptions } from "../okta/client";
 import { ExitError } from "../okta/errors";
 import { defineResource, resourceGet, type ResourceSpec } from "./resource";
 
@@ -143,8 +143,17 @@ export function registerRoles(program: Command, ctx: Ctx, groups: { users: Comma
     }));
 
   addOutputOptions(addVerbose(groups.users.command("role-targets-all").description("Retrieve all role targets for a user's role assignment, by assignment type").argument("<user>").argument("<roleIdOrEncoded>")
-    .option("-f, --user-lookup-field <field>", "profile field to match", "login")), ROLE_TARGET_ALL_FIELDS)
-    .action(action(ctx, async (client, opts, user, roleIdOrEncoded) => client.getAll(`/users/${(await getUser(client, user, opts.userLookupField)).id}/roles/${roleIdOrEncoded}/targets`)));
+    .option("-f, --user-lookup-field <field>", "profile field to match", "login")
+    .addOption(new Option("--assignment-type <type>", "filter by assignment type").choices(["USER", "GROUP"]))
+    .option("--after <cursor>", "pagination cursor")
+    .option("--limit <n>", "page size limit", int)), ROLE_TARGET_ALL_FIELDS)
+    .action(action(ctx, async (client, opts, user, roleIdOrEncoded) => {
+      const query: Query = {};
+      if (opts.assignmentType !== undefined) query.assignmentType = opts.assignmentType;
+      if (opts.after !== undefined) query.after = opts.after;
+      if (opts.limit !== undefined) query.limit = opts.limit;
+      return client.getAll(`/users/${(await getUser(client, user, opts.userLookupField)).id}/roles/${roleIdOrEncoded}/targets`, { query });
+    }));
 
   addOutputOptions(addVerbose(g.command("permissions").description("List a custom role's permissions").argument("<role>")), PERMISSION_FIELDS)
     .action(action(ctx, async (client, _o, roleArg) => client.getAll(`/iam/roles/${(await resourceGet(client, CUSTOM_ROLES, roleArg)).id}/permissions`, { listKey: "permissions" })));
@@ -197,8 +206,16 @@ export function registerRoles(program: Command, ctx: Ctx, groups: { users: Comma
   addOutputOptions(addVerbose(g.command("resource-set-binding").description("Retrieve a role's binding on a resource set").argument("<resourceSet>").argument("<role>")), BINDING_FIELDS)
     .action(action(ctx, async (client, _o, resourceSetArg, role) => client.get(`/iam/resource-sets/${(await resourceGet(client, RESOURCE_SETS, resourceSetArg)).id}/bindings/${role}`)));
 
-  addOutputOptions(addVerbose(bodyOpts(g.command("resource-set-binding-add").description("Create a role resource set binding").argument("<resourceSet>"))), BINDING_FIELDS)
-    .action(action(ctx, async (client, opts, resourceSetArg) => client.json("POST", `/iam/resource-sets/${(await resourceGet(client, RESOURCE_SETS, resourceSetArg)).id}/bindings`, { body: bodyFromOpts(opts) })));
+  // Deviation from the plan: createResourceSetBinding's response is _links-only (no role/binding
+  // fields survive stripLinks), so this always reports the fallback confirmation string rather
+  // than a table.
+  addVerbose(bodyOpts(g.command("resource-set-binding-add").description("Create a role resource set binding").argument("<resourceSet>")))
+    .action(action(ctx, async (client, opts, resourceSetArg) => {
+      const rs = await resourceGet(client, RESOURCE_SETS, resourceSetArg);
+      const body = bodyFromOpts(opts) as { role?: string };
+      await client.json("POST", `/iam/resource-sets/${rs.id}/bindings`, { body });
+      return `binding for role ${body.role} added to resource set ${rs.id} (${rs.label})`;
+    }));
 
   addVerbose(g.command("resource-set-binding-delete").description("Delete a role resource set binding").argument("<resourceSet>").argument("<role>"))
     .action(action(ctx, async (client, _o, resourceSetArg, role) => {

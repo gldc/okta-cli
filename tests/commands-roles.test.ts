@@ -140,6 +140,9 @@ describe("roles", () => {
 
     expect(await runTest(["users", "role-targets-all", "bob@x.com", "APP_ADMIN", "--output-fields", "assignmentType,orn"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("GROUP  orn:okta:directory:x:groups:00g1  \n");
+
+    expect(await runTest(["users", "role-targets-all", "bob@x.com", "APP_ADMIN", "--assignment-type", "GROUP", "--after", "cur1", "--limit", "5", "-j"], t.ctx)).toBe(0);
+    expect(srv.calls.at(-1)!.query).toEqual({ assignmentType: "GROUP", after: "cur1", limit: "5" });
   });
 });
 

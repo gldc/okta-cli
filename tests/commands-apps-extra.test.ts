@@ -89,8 +89,10 @@ describe("apps-extra csrs", () => {
     const csr = { id: "c1", created: "2024-01-01T00:00:00.000Z", kty: "RSA" };
     const key = { kid: "k9", kty: "RSA", created: "2024-01-01T00:00:00.000Z", expiresAt: "2026-01-01T00:00:00.000Z" };
     const f = `${import.meta.dir}/tmp-apps-extra-cert.pem`;
-    await Bun.write(f, "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n");
+    const certBytes = "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n";
+    await Bun.write(f, certBytes);
     let seenContentType = "";
+    let seenBody: ArrayBuffer | undefined;
     srv = startServer([
       { method: "GET", path: "/api/v1/apps/0oa2/credentials/csrs", body: [csr] },
       { method: "POST", path: "/api/v1/apps/0oa2/credentials/csrs", body: csr },
@@ -98,7 +100,11 @@ describe("apps-extra csrs", () => {
       { method: "DELETE", path: "/api/v1/apps/0oa2/credentials/csrs/c1" },
       {
         method: "POST", path: "/api/v1/apps/0oa2/credentials/csrs/c1/lifecycle/publish",
-        handler: (req) => { seenContentType = req.headers.get("content-type") ?? ""; return Response.json(key, { status: 201 }); },
+        handler: async (req) => {
+          seenContentType = req.headers.get("content-type") ?? "";
+          seenBody = await req.arrayBuffer();
+          return Response.json({ ...key, _links: { self: { href: "https://x/self" } } }, { status: 201 });
+        },
       },
       ...standardRoutes(),
     ]);
@@ -113,7 +119,10 @@ describe("apps-extra csrs", () => {
     expect(t.out.at(-1)).toBe("csr c1 revoked from app 0oa2 (Slack)\n");
     await runTest(["apps", "csr-publish", "slack", "c1", "--file", f, "-j"], t.ctx);
     expect(seenContentType).toBe("application/x-pem-file");
-    expect(JSON.parse(t.out.at(-1)!)).toEqual(key);
+    expect(new Uint8Array(seenBody!)).toEqual(new Uint8Array(await Bun.file(f).arrayBuffer()));
+    const parsed = JSON.parse(t.out.at(-1)!);
+    expect(parsed).toEqual(key);
+    expect(parsed._links).toBeUndefined();
     await runTest(["apps", "csr-publish", "slack", "c1", "--file", f, "--format", "der"], t.ctx);
     expect(seenContentType).toBe("application/pkix-cert");
   });

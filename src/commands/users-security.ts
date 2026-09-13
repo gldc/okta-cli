@@ -4,13 +4,15 @@ import { action, addOutputOptions, addVerbose, bodyFromOpts, bodyOpts, int } fro
 import { parseBody } from "../lib/body";
 import { getUser } from "../lib/lookup";
 import type { OktaClient, Query } from "../okta/client";
+import { ExitError } from "../okta/errors";
 import { IDPS } from "./idps";
 import { resourceGet } from "./resource";
 
 const FACTOR_FIELDS = "id,factorType,provider,status,created";
 const QUESTION_FIELDS = "question,questionText";
 const ENROLLMENT_FIELDS = "id,type,key,status,created";
-const RISK_FIELDS = "riskLevel,reason";
+const RISK_GET_FIELDS = "riskLevel";
+const RISK_SET_FIELDS = "riskLevel,reason";
 const CLASSIFICATION_FIELDS = "type,lastUpdated";
 const CLIENT_TOKEN_FIELDS = "id,status,created,expiresAt,scopes";
 const IDP_TOKEN_FIELDS = "id,tokenType,tokenAuthScheme,expiresAt,scopes";
@@ -19,7 +21,7 @@ const CLASSIFICATION_TYPES = ["STANDARD", "LITE"];
 
 const WEBAUTHN_REG_BASE = "/webauthn-registration/api/v1";
 
-const userLookupOpt = (cmd: Command) => cmd.option("-f, --user-lookup-field <field>", "profile field to match", "login");
+const userLookupOpt = (cmd: Command) => cmd.option("-f, --user-lookup-field <field>", "Users are matched against the ID or this profile field; default: 'login'.", "login");
 const resolveUser = (client: OktaClient, opts: Record<string, any>, userArg: string) => getUser(client, userArg, opts.userLookupField);
 
 export function registerUsersSecurity2(usersCmd: Command, ctx: Ctx): void {
@@ -40,6 +42,7 @@ export function registerUsersSecurity2(usersCmd: Command, ctx: Ctx): void {
     .option("--send-email", "send a forgot-password email (default: true)").option("--no-send-email", "return a reset link instead of sending email")
     .option("--new <password>", "new password (completes the flow via recovery question)").option("--answer <answer>", "recovery question answer"))), null)
     .action(action(ctx, async (client, opts, userArg) => {
+      if (opts.new !== undefined && opts.answer === undefined) throw new ExitError("--new requires --answer");
       const user = await resolveUser(client, opts, userArg);
       if (opts.new !== undefined) {
         const body: Record<string, unknown> = { recovery_question: { answer: opts.answer } };
@@ -64,6 +67,7 @@ export function registerUsersSecurity2(usersCmd: Command, ctx: Ctx): void {
     .action(action(ctx, async (client, opts, userArg) => {
       const user = await resolveUser(client, opts, userArg);
       const rv = await client.json("POST", `/users/${user.id}/lifecycle/expire_password_with_temp_password`, { query: opts.revokeSessions ? { revokeSessions: true } : {} });
+      if (!rv) throw new ExitError("no temporary credential returned");
       return `TEMP_PASSWORD${""}: ${rv.tempPassword}`;
     }));
 
@@ -148,12 +152,17 @@ export function registerUsersSecurity2(usersCmd: Command, ctx: Ctx): void {
     .action(action(ctx, async (client, opts, userArg) => client.json("POST", `/users/${(await resolveUser(client, opts, userArg)).id}/authenticator-enrollments/tac`, { body: bodyFromOpts(opts) })));
 
   // Risk & classification
-  addOutputOptions(addVerbose(userLookupOpt(usersCmd.command("risk").description("Retrieve a user's risk level").argument("<user>"))), RISK_FIELDS)
+  addOutputOptions(addVerbose(userLookupOpt(usersCmd.command("risk").description("Retrieve a user's risk level").argument("<user>"))), RISK_GET_FIELDS)
     .action(action(ctx, async (client, opts, userArg) => client.get(`/users/${(await resolveUser(client, opts, userArg)).id}/risk`)));
 
   addOutputOptions(addVerbose(userLookupOpt(usersCmd.command("risk-set").description("Set a user's risk level").argument("<user>")
-    .addOption(new Option("--level <level>", "risk level").choices(RISK_LEVELS).makeOptionMandatory()))), RISK_FIELDS)
-    .action(action(ctx, async (client, opts, userArg) => client.json("PUT", `/users/${(await resolveUser(client, opts, userArg)).id}/risk`, { body: { riskLevel: opts.level } })));
+    .addOption(new Option("--level <level>", "risk level").choices(RISK_LEVELS).makeOptionMandatory())
+    .option("--reason <text>", "reason for the risk level change (defaults to 'override.by.admin')"))), RISK_SET_FIELDS)
+    .action(action(ctx, async (client, opts, userArg) => {
+      const body: Record<string, unknown> = { riskLevel: opts.level };
+      if (opts.reason !== undefined) body.riskReason = opts.reason;
+      return client.json("PUT", `/users/${(await resolveUser(client, opts, userArg)).id}/risk`, { body });
+    }));
 
   addOutputOptions(addVerbose(userLookupOpt(usersCmd.command("classification").description("Retrieve a user's classification").argument("<user>"))), CLASSIFICATION_FIELDS)
     .action(action(ctx, async (client, opts, userArg) => client.get(`/users/${(await resolveUser(client, opts, userArg)).id}/classification`)));

@@ -133,13 +133,20 @@ export class OktaClient {
     return stripLinks(JSON.parse(text));
   }
 
+  // Shared JSON-response parsing (empty-body guard + stripLinks) - used by json() and by
+  // publishCsr (resource.ts), which sends a raw byte body via request() directly but still
+  // wants the response parsed the same way as every other JSON-returning call.
+  async parseJson<T>(rsp: Response): Promise<T> {
+    const text = await rsp.text();
+    if (rsp.status === 204 || text.length === 0) return undefined as T;
+    return stripLinks(JSON.parse(text)) as T;
+  }
+
   json(method: Method, path: string, opts?: RequestOptions): Promise<any>;
   json<T>(method: Method, path: string, opts?: RequestOptions): Promise<T>;
   async json<T>(method: Method, path: string, opts: RequestOptions = {}): Promise<T> {
     const rsp = await this.request(method, path, opts);
-    const text = await rsp.text();
-    if (rsp.status === 204 || text.length === 0) return undefined as T;
-    return stripLinks(JSON.parse(text)) as T;
+    return this.parseJson<T>(rsp);
   }
 
   get(path: string, query?: Query): Promise<any>;

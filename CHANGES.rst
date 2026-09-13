@@ -15,6 +15,8 @@ v19.3.0
   verify-rp-id, auth-servers associated servers/resource keys/rule lifecycle, domains
   certificate, org yubikeys, log-streams schemas, telephony-providers, devices os-accounts,
   policies mapping/mapping-delete, identity-sources group management
+* Changed: oauth-clients role-targets now prints ``{ groups, apps }`` (was a group table);
+  role-target-add/-delete accept ``--app-name``/``--app-id``
 
 v19.2.0
 =======

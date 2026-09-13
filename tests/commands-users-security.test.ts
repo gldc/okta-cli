@@ -55,6 +55,14 @@ describe("credential flows", () => {
     expect(srv.calls.at(-1)!.body).toEqual({ recovery_question: { answer: "blue" }, password: { value: "newpw1" } });
   });
 
+  test("forgot-password --new without --answer fails locally, no server calls", async () => {
+    srv = startServer([...standardRoutes()]);
+    const t = testCtx(srv.url);
+    const code = await runTest(["users", "forgot-password", login, "--new", "newpw1"], t.ctx);
+    expect(code).toBe(255);
+    expect(srv.calls.length).toBe(0);
+  });
+
   test("change-recovery-question sends password + recovery_question", async () => {
     srv = startServer([{ method: "POST", path: `/api/v1/users/${uid}/credentials/change_recovery_question`, body: {} }, ...standardRoutes()]);
     const t = testCtx(srv.url);
@@ -68,6 +76,14 @@ describe("credential flows", () => {
     await runTest(["users", "expire-password-temp", login, "--revoke-sessions"], t.ctx);
     expect(srv.calls.at(-1)!.query).toEqual({ revokeSessions: "true" });
     expect(t.out.at(-1)).toBe("TEMP_PASSWORD: ********\n");
+  });
+
+  test("expire-password-temp errors cleanly when the server returns no credential", async () => {
+    srv = startServer([{ method: "POST", path: `/api/v1/users/${uid}/lifecycle/expire_password_with_temp_password`, status: 204 }, ...standardRoutes()]);
+    const t = testCtx(srv.url);
+    const code = await runTest(["users", "expire-password-temp", login], t.ctx);
+    expect(code).toBe(255);
+    expect(t.err.at(-1)).toBe("ERROR: no temporary credential returned\n");
   });
 });
 
@@ -177,14 +193,21 @@ describe("risk and classification", () => {
   test("risk get/set", async () => {
     srv = startServer([
       { method: "GET", path: `/api/v1/users/${uid}/risk`, body: { riskLevel: "LOW" } },
-      { method: "PUT", path: `/api/v1/users/${uid}/risk`, body: { riskLevel: "HIGH" } },
+      { method: "PUT", path: `/api/v1/users/${uid}/risk`, body: { riskLevel: "HIGH", reason: "override.by.admin" } },
       ...standardRoutes(),
     ]);
     const t = testCtx(srv.url);
     await runTest(["users", "risk", login], t.ctx);
-    expect(t.out.at(-1)).toBe("LOW   \n");
+    expect(t.out.at(-1)).toBe("LOW  \n");
     await runTest(["users", "risk-set", login, "--level", "HIGH"], t.ctx);
     expect(srv.calls.at(-1)!.body).toEqual({ riskLevel: "HIGH" });
+  });
+
+  test("risk-set sends riskReason when --reason is given", async () => {
+    srv = startServer([{ method: "PUT", path: `/api/v1/users/${uid}/risk`, body: { riskLevel: "HIGH", reason: "manual" } }, ...standardRoutes()]);
+    const t = testCtx(srv.url);
+    await runTest(["users", "risk-set", login, "--level", "HIGH", "--reason", "manual"], t.ctx);
+    expect(srv.calls.at(-1)!.body).toEqual({ riskLevel: "HIGH", riskReason: "manual" });
   });
 
   test("classification get/set", async () => {

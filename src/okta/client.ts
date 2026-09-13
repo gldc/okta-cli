@@ -76,12 +76,11 @@ export class OktaClient {
     return full.toString();
   }
 
-  async request(method: Method, path: string, opts: RequestOptions = {}): Promise<Response> {
-    const url = this.buildUrl(path, opts.query, opts.basePath);
-    const init: RequestInit = { method, headers: opts.headers ? { ...this.headers, ...opts.headers } : this.headers };
-    if (opts.body !== undefined && method !== "GET") init.body = JSON.stringify(opts.body);
+  // Shared fetch + retry/error-handling loop for both JSON (request()) and multipart (upload())
+  // bodies - only the URL/init differ between callers.
+  private async send(method: Method, url: string, init: RequestInit): Promise<Response> {
     if (this.verbosity >= 1) this.log(`> ${method} ${url}`);
-    if (this.verbosity >= 3 && init.body) this.log(`> ${init.body}`);
+    if (this.verbosity >= 3 && typeof init.body === "string") this.log(`> ${init.body}`);
     for (let attempt = 0; ; attempt++) {
       let rsp: Response;
       try {
@@ -107,6 +106,30 @@ export class OktaClient {
       }
       return rsp;
     }
+  }
+
+  async request(method: Method, path: string, opts: RequestOptions = {}): Promise<Response> {
+    const url = this.buildUrl(path, opts.query, opts.basePath);
+    const init: RequestInit = { method, headers: opts.headers ? { ...this.headers, ...opts.headers } : this.headers };
+    // A string body (e.g. a raw SET JWT for security-events send) is sent as-is rather than
+    // JSON-encoded - every other caller's body is an object/array from parseBody/bodyFromOpts.
+    if (opts.body !== undefined && method !== "GET") init.body = typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
+    return this.send(method, url, init);
+  }
+
+  // Multipart upload (brand/theme logos, favicons, OIN logos, ...): posts fieldName=Bun.file(filePath)
+  // as a FormData body. Drops the JSON Content-Type header so fetch sets its own multipart boundary;
+  // Authorization/Accept are kept.
+  async upload(path: string, fieldName: string, filePath: string, opts: RequestOptions = {}): Promise<any> {
+    const url = this.buildUrl(path, opts.query, opts.basePath);
+    const { "Content-Type": _contentType, ...baseHeaders } = this.headers;
+    const headers = opts.headers ? { ...baseHeaders, ...opts.headers } : baseHeaders;
+    const form = new FormData();
+    form.append(fieldName, Bun.file(filePath));
+    const rsp = await this.send("POST", url, { method: "POST", headers, body: form });
+    const text = await rsp.text();
+    if (rsp.status === 204 || text.length === 0) return undefined;
+    return stripLinks(JSON.parse(text));
   }
 
   json(method: Method, path: string, opts?: RequestOptions): Promise<any>;

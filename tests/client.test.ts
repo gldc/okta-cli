@@ -118,6 +118,44 @@ describe("OktaClient", () => {
     expect(await c.getAuto("/org")).toEqual({ id: "o" });
     expect(await c.getAuto("/things")).toEqual([{ id: 1 }, { id: 2 }]);
   });
+
+  test("upload sends a multipart form without the JSON Content-Type header", async () => {
+    const f = `${import.meta.dir}/tmp-upload.png`;
+    await Bun.write(f, "fake-image-bytes");
+    srv = startServer([]);
+    let seenContentType = "";
+    let seenAuth = "";
+    let fieldName = "";
+    let uploadedText = "";
+    srv.add({
+      method: "POST",
+      path: "/api/v1/brands/b1/themes/t1/logo",
+      handler: async (req) => {
+        seenContentType = req.headers.get("content-type") ?? "";
+        seenAuth = req.headers.get("authorization") ?? "";
+        const form = await req.formData();
+        const file = form.get("file") as unknown as File;
+        fieldName = [...form.keys()][0] ?? "";
+        uploadedText = await file.text();
+        return Response.json({ url: "https://example.okta.com/logo.png" }, { status: 201 });
+      },
+    });
+    const c = new OktaClient(srv.url, "tok", { sleep: noSleep });
+    const rv = await c.upload("/brands/b1/themes/t1/logo", "file", f);
+    expect(seenContentType).toContain("multipart/form-data");
+    expect(seenAuth).toBe("SSWS tok");
+    expect(fieldName).toBe("file");
+    expect(uploadedText).toBe("fake-image-bytes");
+    expect(rv).toEqual({ url: "https://example.okta.com/logo.png" });
+  });
+
+  test("upload returns undefined on a 204 response", async () => {
+    const f = `${import.meta.dir}/tmp-upload2.png`;
+    await Bun.write(f, "x");
+    srv = startServer([{ method: "POST", path: "/api/v1/brands/b1/themes/t1/logo" }]);
+    const c = new OktaClient(srv.url, "tok", { sleep: noSleep });
+    expect(await c.upload("/brands/b1/themes/t1/logo", "file", f)).toBeUndefined();
+  });
 });
 
 describe("helpers", () => {

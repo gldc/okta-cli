@@ -87,6 +87,13 @@ $ okta-cli auth-servers scopes default                # list a custom authorizat
 $ okta-cli devices list --search 'status eq "ACTIVE"' # list active devices
 $ okta-cli mappings list --source-id <id>             # list profile mappings for a source
 
+# new in 19.2.0
+$ okta-cli brands themes runlayer                     # list a brand's themes (brand name or id)
+$ okta-cli ssf stream-status --stream-id <id>         # check an SSF stream's status
+$ okta-cli agent-pools list                           # list on-prem agent pools
+$ okta-cli pam service-accounts list                  # list privileged access service accounts
+$ okta-cli oin api-services                           # list OIN API service integration instances
+
 $ okta-cli version                                    # print version and exit
 ```
 
@@ -220,6 +227,9 @@ matching exactly:
   `-w`/`--workers` to `bulk-add`/`bulk-update`/`dump`.
 - `-f`/`--user-lookup-field` values other than `login` still probe `GET /users/{value}`
   first before falling back to a profile-field search, same as 18.1.2.
+
+As of 19.2.0, the CLI covers every path family of the pinned spec that has documented
+operations, except end-user-facing flows.
 
 ## References
 

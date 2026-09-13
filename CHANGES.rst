@@ -1,3 +1,24 @@
+v19.2.0
+=======
+
+* New: brands (+ domains, themes/theme-logo/theme-favicon/theme-background, email templates
+  and customizations, sign-in/error/sign-out pages, well-known URIs)
+* New: security-events-providers, ssf (streams + status + verification), security-events send,
+  threats, bot-protection, attack-protection (authenticator/lockout settings), push-providers,
+  device-integrations, device-posture-checks, email-servers, dr (status/failover/failback)
+* New: agent-pools (+ updates, update-settings), identity-sources (+ sessions, bulk-*,
+  user/group single-item gets, group-members), oauth-clients (role assignments + targets),
+  roles governance-bundles/opt-in/opt-out, ui-schemas, first-party-app get/set, org
+  preferences/footer/third-party-admin/communication/aerial/support-cases/email-bounces-remove/
+  admin-app-assignment/client-privileges, directories
+* New: pam (service-accounts, okta-service-accounts), oin (api-services), well-known
+  (org/webauthn/ssf/app-authenticator/apple-app-site-association/assetlinks),
+  personal-settings, webauthn-registration (+ users webauthn-enrollments)
+* New: `OktaClient.upload` for multipart uploads (theme logo/favicon/background); `raw
+  --base-path` still covers any endpoint outside these, including a few paths the pinned
+  spec (2026.08.4) declares with no HTTP operations (PAM resources/containers, OIN
+  submissions)
+
 v19.1.0
 =======
 

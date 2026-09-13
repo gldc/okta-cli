@@ -98,4 +98,22 @@ export function registerRoles(program: Command, ctx: Ctx, groups: { users: Comma
       const rs = await resourceGet(client, RESOURCE_SETS, resourceSetArg);
       return client.getAll(`/iam/resource-sets/${rs.id}/resources`, { listKey: "resources" });
     }));
+
+  addOutputOptions(addVerbose(g.command("governance-bundles").description("List all governance bundles")), "id,name,description")
+    .action(action(ctx, (client) => client.getAll("/iam/governance/bundles", { listKey: "bundles" })));
+
+  addOutputOptions(addVerbose(g.command("governance-bundle").description("Retrieve a governance bundle").argument("<bundleId>")), "id,name,description,status")
+    .action(action(ctx, (client, _o, bundleId) => client.get(`/iam/governance/bundles/${bundleId}`)));
+
+  addOutputOptions(addVerbose(g.command("governance-bundle-entitlements").description("List the entitlements in a governance bundle").argument("<bundleId>")), "id,name,role,description")
+    .action(action(ctx, (client, _o, bundleId) => client.getAll(`/iam/governance/bundles/${bundleId}/entitlements`, { listKey: "entitlements" })));
+
+  addOutputOptions(addVerbose(g.command("governance-entitlement-values").description("List the values for a governance bundle entitlement").argument("<bundleId>").argument("<entitlementId>")), "id,name,value")
+    .action(action(ctx, (client, _o, bundleId, entitlementId) => client.getAll(`/iam/governance/bundles/${bundleId}/entitlements/${entitlementId}/values`, { listKey: "entitlementValues" })));
+
+  addOutputOptions(addVerbose(g.command("governance-opt-in").description("Opt the Admin Console into entitlement management")), null)
+    .action(action(ctx, (client) => client.json("POST", "/iam/governance/optIn")));
+
+  addOutputOptions(addVerbose(g.command("governance-opt-out").description("Opt the Admin Console out of entitlement management")), null)
+    .action(action(ctx, (client) => client.json("POST", "/iam/governance/optOut")));
 }

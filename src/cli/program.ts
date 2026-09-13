@@ -1,15 +1,18 @@
 import { Command, CommanderError } from "commander";
 import { registerApps } from "../commands/apps";
 import { registerAuthServers } from "../commands/auth-servers";
+import { registerBrands } from "../commands/brands";
 import { registerAuthenticators, registerUserSecurity } from "../commands/authenticators";
 import { registerConfig } from "../commands/config";
 import { registerDevices } from "../commands/devices";
+import { registerDirectory } from "../commands/directory";
 import { registerEventhooks } from "../commands/eventhooks";
 import { registerFeatures } from "../commands/features";
 import { registerGroupRules } from "../commands/group-rules";
 import { registerGroups } from "../commands/groups";
 import { registerIdps } from "../commands/idps";
 import { registerInlinehooks } from "../commands/inlinehooks";
+import { registerIntegrations } from "../commands/integrations";
 import { registerLogs } from "../commands/logs";
 import { registerMisc } from "../commands/misc";
 import { registerOrg } from "../commands/org";
@@ -18,6 +21,7 @@ import { registerPolicies } from "../commands/policies";
 import { registerPw } from "../commands/pw";
 import { registerRoles } from "../commands/roles";
 import { registerSchemas } from "../commands/schemas";
+import { registerSecurity } from "../commands/security";
 import { registerTenant } from "../commands/tenant";
 import { registerTokens } from "../commands/tokens";
 import { registerUserTypes } from "../commands/user-types";
@@ -52,6 +56,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerPlatform(program, ctx);
   registerTenant(program, ctx);
   registerAuthServers(program, ctx);
+  registerBrands(program, ctx);
   registerDevices(program, ctx, usersCmd);
   registerInlinehooks(program, ctx);
   registerSchemas(program, ctx, usersCmd);
@@ -61,6 +66,9 @@ export function buildProgram(ctx: Ctx): Command {
   registerAuthenticators(program, ctx);
   registerUserSecurity(usersCmd, ctx);
   registerIdps(program, ctx);
+  registerSecurity(program, ctx);
+  registerDirectory(program, ctx);
+  registerIntegrations(program, ctx, usersCmd);
   registerMisc(program, ctx);
   return program;
 }

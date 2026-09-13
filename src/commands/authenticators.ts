@@ -1,11 +1,12 @@
-import type { Command } from "commander";
+import { Option, type Command } from "commander";
 import type { Ctx } from "../cli/context";
-import { action, addOutputOptions, addVerbose, subgroup } from "../cli/options";
+import { action, addOutputOptions, addVerbose, bodyFromOpts, bodyOpts, subgroup } from "../cli/options";
 import { getUser } from "../lib/lookup";
 import { defineResource, resourceGet, type ResourceSpec } from "./resource";
 
 const METHOD_FIELDS = "type,status";
 const SESSION_FIELDS = "id,userId,login,status,createdAt,expiresAt";
+const AAGUID_FIELDS = "aaguid,name";
 
 export const AUTHENTICATORS: ResourceSpec = { name: "authenticators", description: "Authenticators (MFA)", path: "/authenticators", singular: "authenticator", nameField: "name", defaultFields: "id,status,type,key,name", lifecycle: true, deletable: false, creatable: false };
 
@@ -22,6 +23,56 @@ export function registerAuthenticators(program: Command, ctx: Ctx): Command {
         return client.json("POST", `/authenticators/${authenticator.id}/methods/${methodType}/lifecycle/${verb}`);
       }));
   }
+
+  addOutputOptions(addVerbose(a.command("method").description("Retrieve an authenticator method").argument("<authenticator>").argument("<methodType>")), METHOD_FIELDS)
+    .action(action(ctx, async (client, _o, authArg, methodType) => client.get(`/authenticators/${(await resourceGet(client, AUTHENTICATORS, authArg)).id}/methods/${methodType}`)));
+
+  addOutputOptions(addVerbose(bodyOpts(a.command("method-set").description("Replace an authenticator method").argument("<authenticator>").argument("<methodType>"))), METHOD_FIELDS)
+    .action(action(ctx, async (client, opts, authArg, methodType) => {
+      const authenticator = await resourceGet(client, AUTHENTICATORS, authArg);
+      return client.json("PUT", `/authenticators/${authenticator.id}/methods/${methodType}`, { body: bodyFromOpts(opts) });
+    }));
+
+  addOutputOptions(addVerbose(a.command("aaguids").description("List an authenticator's custom AAGUIDs").argument("<authenticator>")), AAGUID_FIELDS)
+    .action(action(ctx, async (client, _o, authArg) => client.getAll(`/authenticators/${(await resourceGet(client, AUTHENTICATORS, authArg)).id}/aaguids`)));
+
+  addOutputOptions(addVerbose(a.command("aaguid").description("Retrieve a custom AAGUID").argument("<authenticator>").argument("<aaguid>")), AAGUID_FIELDS)
+    .action(action(ctx, async (client, _o, authArg, aaguid) => client.get(`/authenticators/${(await resourceGet(client, AUTHENTICATORS, authArg)).id}/aaguids/${aaguid}`)));
+
+  addOutputOptions(addVerbose(bodyOpts(a.command("aaguid-add").description("Create a custom AAGUID").argument("<authenticator>"))), AAGUID_FIELDS)
+    .action(action(ctx, async (client, opts, authArg) => {
+      const authenticator = await resourceGet(client, AUTHENTICATORS, authArg);
+      return client.json("POST", `/authenticators/${authenticator.id}/aaguids`, { body: bodyFromOpts(opts) });
+    }));
+
+  addOutputOptions(addVerbose(bodyOpts(a.command("aaguid-replace").description("Replace a custom AAGUID").argument("<authenticator>").argument("<aaguid>"))), AAGUID_FIELDS)
+    .action(action(ctx, async (client, opts, authArg, aaguid) => {
+      const authenticator = await resourceGet(client, AUTHENTICATORS, authArg);
+      return client.json("PUT", `/authenticators/${authenticator.id}/aaguids/${aaguid}`, { body: bodyFromOpts(opts) });
+    }));
+
+  addOutputOptions(addVerbose(bodyOpts(a.command("aaguid-update").description("Update a custom AAGUID").argument("<authenticator>").argument("<aaguid>"))), AAGUID_FIELDS)
+    .action(action(ctx, async (client, opts, authArg, aaguid) => {
+      const authenticator = await resourceGet(client, AUTHENTICATORS, authArg);
+      return client.json("PATCH", `/authenticators/${authenticator.id}/aaguids/${aaguid}`, { body: bodyFromOpts(opts) });
+    }));
+
+  addVerbose(a.command("aaguid-delete").description("Delete a custom AAGUID").argument("<authenticator>").argument("<aaguid>"))
+    .action(action(ctx, async (client, _o, authArg, aaguid) => {
+      const authenticator = await resourceGet(client, AUTHENTICATORS, authArg);
+      await client.json("DELETE", `/authenticators/${authenticator.id}/aaguids/${aaguid}`);
+      return `AAGUID ${aaguid} deleted from authenticator ${authenticator.id} (${authenticator.name})`;
+    }));
+
+  // Deviation from the plan: verifyRpIdDomain takes no request body in the spec
+  // (`requestBody?: never`) and returns 204, so there's no -b/-s and no printed object.
+  addVerbose(a.command("verify-rp-id").description("Verify the Relying Party ID domain for a Passkey (FIDO2 WebAuthn) authenticator method").argument("<authenticator>")
+    .addOption(new Option("--method <type>", "authenticator method type").choices(["webauthn"]).default("webauthn")))
+    .action(action(ctx, async (client, opts, authArg) => {
+      const authenticator = await resourceGet(client, AUTHENTICATORS, authArg);
+      await client.json("POST", `/authenticators/${authenticator.id}/methods/${opts.method}/verify-rp-id-domain`);
+      return `rp id domain verified for authenticator ${authenticator.id} (${authenticator.name}) method ${opts.method}`;
+    }));
 
   const sessions = subgroup(program, "sessions", "User sessions");
   addOutputOptions(addVerbose(sessions.command("get").description("Get a session").argument("<sessionId>")), SESSION_FIELDS)

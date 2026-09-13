@@ -23,6 +23,7 @@ test("spec paths", () => {
   expect(knownPath(`${POLICIES.path}/x/clone`)).toBe(true);
   expect(knownPath(`${POLICIES.path}/x/app`)).toBe(true);
   expect(knownPath(`${POLICIES.path}/x/mappings`)).toBe(true);
+  expect(knownPath(`${POLICIES.path}/x/mappings/y`)).toBe(true);
 });
 
 test("POLICY_TYPES includes the documented types", () => {
@@ -149,5 +150,18 @@ describe("policies clone / apps / map", () => {
     const t = testCtx(srv.url);
     await runTest(["policies", "map", "pol1", "--resource-type", "APP", "--resource-id", "0oa1"], t.ctx);
     expect(srv.calls.at(-1)!.body).toEqual({ resourceType: "APP", resourceId: "0oa1" });
+  });
+
+  test("mapping retrieves one; mapping-delete deletes it", async () => {
+    srv = startServer([
+      policyByIdRoute,
+      { method: "GET", path: "/api/v1/policies/pol1/mappings/m1", body: { id: "m1", resourceType: "APP", resourceId: "0oa1" } },
+      { method: "DELETE", path: "/api/v1/policies/pol1/mappings/m1" },
+    ]);
+    const t = testCtx(srv.url);
+    await runTest(["policies", "mapping", "pol1", "m1", "-j"], t.ctx);
+    expect(JSON.parse(t.out.at(-1)!).id).toBe("m1");
+    await runTest(["policies", "mapping-delete", "pol1", "m1"], t.ctx);
+    expect(t.out.at(-1)).toBe("mapping m1 deleted from policy pol1\n");
   });
 });

@@ -14,6 +14,9 @@ test("spec paths", () => {
     if (s.lifecycle) expect(knownPath(`${s.path}/x/lifecycle/activate`), s.path).toBe(true);
   }
   expect(knownPath("/domains/x/verify")).toBe(true);
+  expect(knownPath("/domains/x/certificate")).toBe(true);
+  expect(knownPath("/meta/schemas/logStream")).toBe(true);
+  expect(knownPath("/meta/schemas/logStream/aws_eventbridge")).toBe(true);
 });
 
 describe("platform resources", () => {
@@ -53,5 +56,33 @@ describe("platform resources", () => {
     const t = testCtx(srv.url);
     await runTest(["log-streams", "list", "-t", "splunk_cloud_logstreaming"], t.ctx);
     expect(srv.calls[0]!.query).toEqual({ filter: 'type eq "splunk_cloud_logstreaming"' });
+  });
+
+  test("domains certificate reads cert/key/chain files and PUTs the certificate body", async () => {
+    const d = { id: "d1", domain: "login.acme.com", validationStatus: "VERIFIED", certificateSourceType: "OKTA_MANAGED" };
+    const certFile = `${import.meta.dir}/tmp-platform-cert.pem`;
+    const keyFile = `${import.meta.dir}/tmp-platform-key.pem`;
+    await Bun.write(certFile, "CERT");
+    await Bun.write(keyFile, "KEY");
+    srv = startServer([
+      { method: "GET", path: /^\/api\/v1\/domains\/d1$/, body: d },
+      { method: "PUT", path: "/api/v1/domains/d1/certificate" },
+    ]);
+    const t = testCtx(srv.url);
+    await runTest(["domains", "certificate", "d1", "--cert", certFile, "--key", keyFile], t.ctx);
+    expect(srv.calls.at(-1)!.body).toEqual({ type: "PEM", certificate: "CERT", privateKey: "KEY", certificateChain: undefined });
+    expect(t.out.at(-1)).toBe("certificate updated for domain d1 (login.acme.com)\n");
+  });
+
+  test("log-streams schemas/schema", async () => {
+    srv = startServer([
+      { method: "GET", path: "/api/v1/meta/schemas/logStream", body: [{ id: "aws_eventbridge", title: "AWS EventBridge", type: "object" }] },
+      { method: "GET", path: "/api/v1/meta/schemas/logStream/aws_eventbridge", body: { id: "aws_eventbridge", title: "AWS EventBridge", type: "object" } },
+    ]);
+    const t = testCtx(srv.url);
+    await runTest(["log-streams", "schemas", "-j"], t.ctx);
+    expect(JSON.parse(t.out.at(-1)!)[0].title).toBe("AWS EventBridge");
+    await runTest(["log-streams", "schema", "aws_eventbridge", "-j"], t.ctx);
+    expect(JSON.parse(t.out.at(-1)!).title).toBe("AWS EventBridge");
   });
 });

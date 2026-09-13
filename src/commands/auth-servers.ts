@@ -15,6 +15,7 @@ const KEY_FIELDS = "kid,status,use,alg";
 // Deviation from the plan: schema JwkUse is `{ use?: "sig" }` (a single enum value, not an
 // array), so `rotate-keys` posts `{ use: "sig" }` rather than `{ use: ["<kid>"] }`.
 const KEY_USE_CHOICES = ["sig"];
+const RESOURCE_KEY_FIELDS = "id,kid,status,kty,created";
 
 export const AUTH_SERVERS: ResourceSpec = {
   name: "auth-servers", description: "Custom authorization servers (OAuth 2.0 / OIDC)", path: "/authorizationServers", singular: "authorization server",
@@ -122,6 +123,17 @@ export function registerAuthServers(program: Command, ctx: Ctx): Command {
       return `rule ${rule.id} (${rule.name}) deleted from policy ${policy.id} on authorization server ${server.id}`;
     }));
 
+  for (const verb of ["activate", "deactivate"] as const) {
+    addOutputOptions(addVerbose(g.command(`rule-${verb}`).description(`${verb[0]!.toUpperCase()}${verb.slice(1)} a custom authorization server policy rule`).argument("<server>").argument("<policy>").argument("<rule>")), AS_RULE_FIELDS)
+      .action(action(ctx, async (client, _o, serverArg, policyArg, ruleArg) => {
+        const server = await resolveServer(client, serverArg);
+        const policy = await getNested(client, `/authorizationServers/${server.id}/policies`, policyArg, "name", "authorization server policy");
+        const rule = await getNested(client, `/authorizationServers/${server.id}/policies/${policy.id}/rules`, ruleArg, "name", "authorization server policy rule");
+        const rv = await client.json("POST", `/authorizationServers/${server.id}/policies/${policy.id}/rules/${rule.id}/lifecycle/${verb}`);
+        return rv ?? `rule ${rule.id} (${rule.name}) ${verb}d`;
+      }));
+  }
+
   addOutputOptions(addVerbose(g.command("clients").description("List OAuth 2.0 clients that requested tokens from a custom authorization server").argument("<server>")), CLIENT_FIELDS)
     .action(action(ctx, async (client, _o, serverArg) => {
       const server = await resolveServer(client, serverArg);
@@ -156,6 +168,57 @@ export function registerAuthServers(program: Command, ctx: Ctx): Command {
       const server = await resolveServer(client, serverArg);
       return client.json("POST", `/authorizationServers/${server.id}/credentials/lifecycle/keyRotate`, { body: { use: opts.use } });
     }));
+
+  addOutputOptions(addVerbose(g.command("key").description("Retrieve a signing key credential for a custom authorization server").argument("<server>").argument("<kid>")), KEY_FIELDS)
+    .action(action(ctx, async (client, _o, serverArg, kid) => client.get(`/authorizationServers/${(await resolveServer(client, serverArg)).id}/credentials/keys/${kid}`)));
+
+  addOutputOptions(addVerbose(g.command("associated").description("List authorization servers associated with a custom authorization server").argument("<server>")), AUTH_SERVERS.defaultFields)
+    .action(action(ctx, async (client, _o, serverArg) => client.getAll(`/authorizationServers/${(await resolveServer(client, serverArg)).id}/associatedServers`)));
+
+  // Deviation from the plan: AssociatedServerMediated's field is `trusted` (a list of
+  // authorization server ids), not `associated`.
+  addOutputOptions(addVerbose(g.command("associated-add").description("Associate another authorization server with a custom authorization server").argument("<server>")
+    .requiredOption("--server <other>", "id or unique name of the authorization server to associate")), AUTH_SERVERS.defaultFields)
+    .action(action(ctx, async (client, opts, serverArg) => {
+      const server = await resolveServer(client, serverArg);
+      const other = await resolveServer(client, opts.server);
+      return client.json("POST", `/authorizationServers/${server.id}/associatedServers`, { body: { trusted: [other.id] } });
+    }));
+
+  addVerbose(g.command("associated-delete").description("Remove an associated authorization server").argument("<server>").argument("<associatedId>"))
+    .action(action(ctx, async (client, _o, serverArg, associatedId) => {
+      const server = await resolveServer(client, serverArg);
+      await client.json("DELETE", `/authorizationServers/${server.id}/associatedServers/${associatedId}`);
+      return `associated authorization server ${associatedId} removed from authorization server ${server.id}`;
+    }));
+
+  addOutputOptions(addVerbose(g.command("resource-keys").description("List the public JSON Web Keys of a custom authorization server")
+    .argument("<server>")), RESOURCE_KEY_FIELDS)
+    .action(action(ctx, async (client, _o, serverArg) => client.getAll(`/authorizationServers/${(await resolveServer(client, serverArg)).id}/resourceservercredentials/keys`)));
+
+  addOutputOptions(addVerbose(g.command("resource-key").description("Retrieve a public JSON Web Key of a custom authorization server").argument("<server>").argument("<kid>")), RESOURCE_KEY_FIELDS)
+    .action(action(ctx, async (client, _o, serverArg, kid) => client.get(`/authorizationServers/${(await resolveServer(client, serverArg)).id}/resourceservercredentials/keys/${kid}`)));
+
+  addOutputOptions(addVerbose(bodyOpts(g.command("resource-key-add").description("Add a public JSON Web Key to a custom authorization server").argument("<server>"))), RESOURCE_KEY_FIELDS)
+    .action(action(ctx, async (client, opts, serverArg) => {
+      const server = await resolveServer(client, serverArg);
+      return client.json("POST", `/authorizationServers/${server.id}/resourceservercredentials/keys`, { body: bodyFromOpts(opts) });
+    }));
+
+  addVerbose(g.command("resource-key-delete").description("Delete a public JSON Web Key from a custom authorization server").argument("<server>").argument("<kid>"))
+    .action(action(ctx, async (client, _o, serverArg, kid) => {
+      const server = await resolveServer(client, serverArg);
+      await client.json("DELETE", `/authorizationServers/${server.id}/resourceservercredentials/keys/${kid}`);
+      return `resource server key ${kid} deleted from authorization server ${server.id}`;
+    }));
+
+  for (const verb of ["activate", "deactivate"] as const) {
+    addOutputOptions(addVerbose(g.command(`resource-key-${verb}`).description(`${verb[0]!.toUpperCase()}${verb.slice(1)} a public JSON Web Key of a custom authorization server`).argument("<server>").argument("<kid>")), RESOURCE_KEY_FIELDS)
+      .action(action(ctx, async (client, _o, serverArg, kid) => {
+        const server = await resolveServer(client, serverArg);
+        return client.json("POST", `/authorizationServers/${server.id}/resourceservercredentials/keys/${kid}/lifecycle/${verb}`);
+      }));
+  }
 
   return g;
 }

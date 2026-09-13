@@ -4,7 +4,7 @@ import { action, addOutputOptions, addVerbose, bodyFromOpts, bodyOpts } from "..
 import { parseBody } from "../lib/body";
 import { getApp } from "../lib/lookup";
 import type { OktaClient } from "../okta/client";
-import { resourceGet } from "./resource";
+import { publishCsr, resourceGet } from "./resource";
 import { FEATURE_FIELDS, KEY_FIELDS } from "./apps";
 import { POLICIES } from "./policies";
 
@@ -20,14 +20,6 @@ const MAPPING_FIELDS = "id,status,sourceGroupId,targetGroupId,lastPush";
 const CWO_FIELDS = "id,status,requestingAppInstanceId,resourceAppInstanceId,created";
 const INTERCLIENT_FIELDS = "id,appInstanceId,trustedAppInstanceId,created";
 const ALLOWED_APP_ID_FIELDS = "appId";
-
-// Maps --format to the Content-Type the spec's publishCsrFromApplication accepts for each
-// certificate encoding (confirmed against Okta's developer docs for this operation).
-const CSR_PUBLISH_CONTENT_TYPES: Record<string, string> = {
-  pem: "application/x-pem-file",
-  der: "application/pkix-cert",
-  cer: "application/x-x509-ca-cert",
-};
 
 export function registerAppsExtra(appsCmd: Command, ctx: Ctx): void {
   const resolveApp = (client: OktaClient, appArg: string) => getApp(client, appArg);
@@ -122,10 +114,7 @@ export function registerAppsExtra(appsCmd: Command, ctx: Ctx): void {
     .addOption(new Option("--format <fmt>", "certificate file encoding").choices(["pem", "der", "cer"]).default("pem"))), KEY_FIELDS)
     .action(action(ctx, async (client, opts, appArg, id) => {
       const app = await resolveApp(client, appArg);
-      const bytes = new Uint8Array(await Bun.file(opts.file).arrayBuffer());
-      const rsp = await client.request("POST", `${csrsPath(app.id)}/${id}/lifecycle/publish`, { body: bytes, headers: { "Content-Type": CSR_PUBLISH_CONTENT_TYPES[opts.format as string]! } });
-      const text = await rsp.text();
-      return text.length === 0 ? undefined : JSON.parse(text);
+      return publishCsr(client, `${csrsPath(app.id)}/${id}/lifecycle/publish`, opts.file, opts.format);
     }));
 
   // Credentials: key credentials (list/generate already exist on apps.ts)

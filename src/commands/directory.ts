@@ -121,6 +121,15 @@ function registerIdentitySources(program: Command, ctx: Ctx): void {
       const rv = await client.get(`/identity-sources/${source}/groups/${groupOrExternalId}/membership`);
       return (rv.memberExternalIds ?? []).map((memberExternalId: string) => ({ memberExternalId }));
     }));
+
+  addOutputOptions(addVerbose(bodyOpts(is.command("group-add").description("Create a group in an identity source").argument("<source>"))), IDENTITY_SOURCE_GROUP_FIELDS)
+    .action(action(ctx, (client, opts, source) => client.json("POST", `/identity-sources/${source}/groups`, { body: bodyFromOpts(opts) })));
+
+  addVerbose(is.command("group-member-delete").description("Delete a member from an identity source group's membership").argument("<source>").argument("<groupOrExternalId>").argument("<memberExternalId>"))
+    .action(action(ctx, async (client, _o, source, groupOrExternalId, memberExternalId) => {
+      await client.json("DELETE", `/identity-sources/${source}/groups/${groupOrExternalId}/membership/${memberExternalId}`);
+      return `member ${memberExternalId} removed from identity source ${source} group ${groupOrExternalId}`;
+    }));
 }
 
 function registerOauthClients(program: Command, ctx: Ctx): void {

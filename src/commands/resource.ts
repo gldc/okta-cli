@@ -57,6 +57,23 @@ export async function resourceGet(client: OktaClient, spec: ResourceSpec, nameOr
   return matches[0];
 }
 
+// Maps --format to the Content-Type a certificate-publish endpoint (apps/idps CSR publish)
+// accepts for each certificate encoding (confirmed against Okta's developer docs).
+export const CSR_PUBLISH_CONTENT_TYPES: Record<string, string> = {
+  pem: "application/x-pem-file",
+  der: "application/pkix-cert",
+  cer: "application/x-x509-ca-cert",
+};
+
+// Publishes a CSR by sending the raw certificate bytes with the Content-Type matching
+// `format` - shared by `apps csr-publish` and `idps csr-publish`.
+export async function publishCsr(client: OktaClient, path: string, file: string, format: string): Promise<any> {
+  const bytes = new Uint8Array(await Bun.file(file).arrayBuffer());
+  const rsp = await client.request("POST", path, { body: bytes, headers: { "Content-Type": CSR_PUBLISH_CONTENT_TYPES[format]! } });
+  const text = await rsp.text();
+  return text.length === 0 ? undefined : JSON.parse(text);
+}
+
 // Resolves a nested (non-top-level) resource by id, falling back to a unique substring
 // match on `nameField` across the collection at `path` - shared by scopes/claims/policies/rules
 // (auth-servers.ts) and policy rules (policies.ts).

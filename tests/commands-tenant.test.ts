@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { BEHAVIORS, CAPTCHAS, EMAIL_DOMAINS, MAPPINGS, REALM_ASSIGNMENTS, REALMS, SMS_TEMPLATES } from "../src/commands/tenant";
+import { BEHAVIORS, CAPTCHAS, EMAIL_DOMAINS, MAPPINGS, REALM_ASSIGNMENTS, REALMS, SMS_TEMPLATES, TELEPHONY_PROVIDERS } from "../src/commands/tenant";
 import { knownPath } from "../src/okta/spec-paths";
 import { runTest, testCtx } from "./fixtures/ctx";
 import { startServer } from "./fixtures/server";
@@ -21,6 +21,8 @@ test("spec paths", () => {
     REALMS.path, `${REALMS.path}/x`,
     REALM_ASSIGNMENTS.path, `${REALM_ASSIGNMENTS.path}/x`, `${REALM_ASSIGNMENTS.path}/x/lifecycle/activate`, `${REALM_ASSIGNMENTS.path}/x/lifecycle/deactivate`,
     CAPTCHAS.path, `${CAPTCHAS.path}/x`,
+    TELEPHONY_PROVIDERS.path, `${TELEPHONY_PROVIDERS.path}/x`, `${TELEPHONY_PROVIDERS.path}/x/lifecycle/activate`, `${TELEPHONY_PROVIDERS.path}/x/lifecycle/deactivate`,
+    `${TELEPHONY_PROVIDERS.path}/x/setAsPrimary`, `${TELEPHONY_PROVIDERS.path}/x/test`,
     "/rate-limit-settings/admin-notifications", "/rate-limit-settings/per-client", "/rate-limit-settings/warning-threshold",
     "/principal-rate-limits", "/principal-rate-limits/x",
   ]) expect(knownPath(p), p).toBe(true);
@@ -236,5 +238,48 @@ describe("rate-limits", () => {
     await runTest(["rate-limits", "principal-update", "prl1", "-s", "defaultPercentage=75"], t.ctx);
     expect(srv.calls.at(-1)!.path).toBe("/api/v1/principal-rate-limits/prl1");
     expect(srv.calls.at(-1)!.body).toEqual({ defaultPercentage: "75" });
+  });
+});
+
+describe("telephony-providers", () => {
+  const provider = { id: "tel1", providerName: "TWILIO", providerCapability: "ALL", enabled: true, isPrimaryProvider: false };
+  const providerByIdRoute = { method: "GET" as const, path: /^\/api\/v1\/telephony-providers\/tel1$/, body: provider };
+
+  test("list/get/add/delete/activate/deactivate/update/set-primary/test", async () => {
+    srv = startServer([
+      providerByIdRoute,
+      { method: "GET", path: "/api/v1/telephony-providers", body: [provider] },
+      { method: "POST", path: "/api/v1/telephony-providers", body: provider },
+      { method: "DELETE", path: "/api/v1/telephony-providers/tel1" },
+      { method: "POST", path: /^\/api\/v1\/telephony-providers\/tel1\/lifecycle\/(activate|deactivate)$/, body: provider },
+      { method: "PATCH", path: "/api/v1/telephony-providers/tel1", body: provider },
+      { method: "POST", path: "/api/v1/telephony-providers/tel1/setAsPrimary", body: { ...provider, isPrimaryProvider: true } },
+      { method: "POST", path: "/api/v1/telephony-providers/tel1/test" },
+    ]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["telephony-providers", "list", "-j"], t.ctx)).toBe(0);
+    expect(JSON.parse(t.out.at(-1)!)[0].id).toBe("tel1");
+    expect(await runTest(["telephony-providers", "get", "tel1", "-j"], t.ctx)).toBe(0);
+    expect(JSON.parse(t.out.at(-1)!).id).toBe("tel1");
+    expect(await runTest(["telephony-providers", "add", "-s", "providerName=TWILIO", "-j"], t.ctx)).toBe(0);
+    expect(srv.calls.at(-1)!.body).toEqual({ providerName: "TWILIO" });
+    expect(await runTest(["telephony-providers", "activate", "tel1", "-j"], t.ctx)).toBe(0);
+    expect(await runTest(["telephony-providers", "deactivate", "tel1", "-j"], t.ctx)).toBe(0);
+    expect(await runTest(["telephony-providers", "update", "tel1", "-s", "providerSid=SID1", "-j"], t.ctx)).toBe(0);
+    expect(srv.calls.at(-1)!.method).toBe("PATCH");
+    expect(srv.calls.at(-1)!.body).toEqual({ providerSid: "SID1" });
+    expect(await runTest(["telephony-providers", "set-primary", "tel1", "-j"], t.ctx)).toBe(0);
+    expect(JSON.parse(t.out.at(-1)!).isPrimaryProvider).toBe(true);
+    expect(await runTest(["telephony-providers", "test", "tel1", "-s", "factor=SMS", "-s", "phoneNumber=+15551234567"], t.ctx)).toBe(0);
+    expect(srv.calls.at(-1)!.body).toEqual({ factor: "SMS", phoneNumber: "+15551234567" });
+    expect(t.out.at(-1)).toBe("test message sent from custom telephony provider tel1\n");
+    expect(await runTest(["telephony-providers", "delete", "tel1"], t.ctx)).toBe(0);
+  });
+
+  test("replace is not registered (PATCH, not PUT, per spec)", async () => {
+    srv = startServer([]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["telephony-providers", "replace", "tel1", "-s", "x=1"], t.ctx)).not.toBe(0);
+    expect(srv.calls.length).toBe(0);
   });
 });

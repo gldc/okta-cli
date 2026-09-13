@@ -51,6 +51,14 @@ export const CAPTCHAS: ResourceSpec = {
   nameField: "name", defaultFields: "id,name,type,siteKey",
 };
 
+// Deviation from the plan: CustomTelephonyProviderCredentialResponse has no `name` field
+// (only `id`), so `nameField` is `id`. Updates are PATCH, not PUT, so `replaceable: false`
+// and a custom `update` command below.
+export const TELEPHONY_PROVIDERS: ResourceSpec = {
+  name: "telephony-providers", description: "Custom telephony providers", path: "/telephony-providers", singular: "custom telephony provider",
+  nameField: "id", defaultFields: "id,providerName,providerCapability,enabled,isPrimaryProvider", lifecycle: true, replaceable: false,
+};
+
 export function registerTenant(program: Command, ctx: Ctx): void {
   const mp = defineResource(program, ctx, MAPPINGS);
   addOutputOptions(addVerbose(bodyOpts(mp.command("update").description("Update (POST) a profile mapping's property expressions").argument("<mapping-id>"))), MAPPING_FIELDS)
@@ -81,6 +89,25 @@ export function registerTenant(program: Command, ctx: Ctx): void {
   defineResource(program, ctx, REALMS);
   defineResource(program, ctx, REALM_ASSIGNMENTS);
   defineResource(program, ctx, CAPTCHAS);
+
+  const tp = defineResource(program, ctx, TELEPHONY_PROVIDERS);
+  addOutputOptions(addVerbose(bodyOpts(tp.command("update").description("Update (PATCH) a custom telephony provider's credentials").argument("<provider>"))), TELEPHONY_PROVIDERS.defaultFields)
+    .action(action(ctx, async (client, opts, providerArg) => {
+      const provider = await resourceGet(client, TELEPHONY_PROVIDERS, providerArg);
+      return client.json("PATCH", `/telephony-providers/${provider.id}`, { body: bodyFromOpts(opts) });
+    }));
+  addOutputOptions(addVerbose(tp.command("set-primary").description("Set a custom telephony provider as the primary provider").argument("<provider>")), TELEPHONY_PROVIDERS.defaultFields)
+    .action(action(ctx, async (client, _o, providerArg) => {
+      const provider = await resourceGet(client, TELEPHONY_PROVIDERS, providerArg);
+      const rv = await client.json("POST", `/telephony-providers/${provider.id}/setAsPrimary`);
+      return rv ?? `custom telephony provider ${provider.id} set as primary`;
+    }));
+  addVerbose(bodyOpts(tp.command("test").description("Send a test message from a custom telephony provider").argument("<provider>")))
+    .action(action(ctx, async (client, opts, providerArg) => {
+      const provider = await resourceGet(client, TELEPHONY_PROVIDERS, providerArg);
+      await client.json("POST", `/telephony-providers/${provider.id}/test`, { body: bodyFromOpts(opts) });
+      return `test message sent from custom telephony provider ${provider.id}`;
+    }));
 
   const rl = subgroup(program, "rate-limits", "Rate limit settings and principal overrides");
 

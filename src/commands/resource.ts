@@ -1,7 +1,6 @@
 import { Option, type Command } from "commander";
 import type { Ctx } from "../cli/context";
-import { action, addOutputOptions, addVerbose, collect, subgroup } from "../cli/options";
-import { parseBody } from "../lib/body";
+import { action, addOutputOptions, addVerbose, bodyFromOpts, bodyOpts, subgroup } from "../cli/options";
 import { deepMerge, getDotted, isPlainObject } from "../lib/dotted";
 import { selectField } from "../lib/lookup";
 import type { OktaClient, Query } from "../okta/client";
@@ -58,6 +57,22 @@ export async function resourceGet(client: OktaClient, spec: ResourceSpec, nameOr
   return matches[0];
 }
 
+// Resolves a nested (non-top-level) resource by id, falling back to a unique substring
+// match on `nameField` across the collection at `path` - shared by scopes/claims/policies/rules
+// (auth-servers.ts) and policy rules (policies.ts).
+export async function getNested(client: OktaClient, path: string, arg: string, nameField: string, singular: string): Promise<any> {
+  try {
+    return await client.get(`${path}/${encodeURIComponent(arg)}`);
+  } catch (e) {
+    if (!(e instanceof OktaApiError)) throw e;
+  }
+  const items: any[] = await client.getAll(path);
+  const matches = items.filter(selectField(nameField, arg));
+  if (matches.length > 1) throw new ExitError(`Name for ${singular} must be unique. (found ${matches.length} matches).`);
+  if (matches.length === 0) throw new ExitError(`No matching ${singular} found.`);
+  return matches[0];
+}
+
 export function defineResource(parent: Command, ctx: Ctx, spec: ResourceSpec): Command {
   const g = subgroup(parent, spec.name, spec.description);
   const out = (cmd: Command, forList = false) => addOutputOptions(addVerbose(addListOptions(cmd, spec, forList)), spec.defaultFields);
@@ -75,22 +90,15 @@ export function defineResource(parent: Command, ctx: Ctx, spec: ResourceSpec): C
     .action(action(ctx, (client, opts, nameOrId) => resourceGet(client, spec, nameOrId, lookupQuery(spec, opts))));
 
   if (spec.creatable !== false) {
-    out(g.command("add").description(`Create a ${spec.singular} from a JSON body (-b) and/or dotted assignments (-s)`)
-      .option("-b, --body <json>", "JSON body; FILE:<path> reads a file").option("-s, --set <k=v>", "set a (dotted) field", collect, []))
-      .action(action(ctx, (client, opts) => {
-        const body = parseBody(opts.body, opts.set);
-        if (body === undefined) throw new ExitError("Provide -b and/or -s");
-        return client.json("POST", spec.path, { body });
-      }));
+    out(bodyOpts(g.command("add").description(`Create a ${spec.singular} from a JSON body (-b) and/or dotted assignments (-s)`)))
+      .action(action(ctx, (client, opts) => client.json("POST", spec.path, { body: bodyFromOpts(opts) })));
   }
 
   if (spec.replaceable !== false) {
-    out(g.command("replace").description(`Replace (PUT) a ${spec.singular}; with only -s the current object is fetched and merged`).argument("<name-or-id>")
-      .option("-b, --body <json>", "JSON body; FILE:<path> reads a file").option("-s, --set <k=v>", "set a (dotted) field", collect, []))
+    out(bodyOpts(g.command("replace").description(`Replace (PUT) a ${spec.singular}; with only -s the current object is fetched and merged`).argument("<name-or-id>")))
       .action(action(ctx, async (client, opts, nameOrId) => {
         const existing = await resourceGet(client, spec, nameOrId, lookupQuery(spec, opts));
-        let body = parseBody(opts.body, opts.set);
-        if (body === undefined) throw new ExitError("Provide -b and/or -s");
+        let body = bodyFromOpts(opts);
         if (!opts.body && isPlainObject(body)) body = deepMerge(existing, body);
         return client.json("PUT", `${spec.path}/${idOf(spec, existing)}`, { body });
       }));

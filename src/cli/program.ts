@@ -1,7 +1,9 @@
 import { Command, CommanderError } from "commander";
 import { registerApps } from "../commands/apps";
+import { registerAuthServers } from "../commands/auth-servers";
 import { registerAuthenticators, registerUserSecurity } from "../commands/authenticators";
 import { registerConfig } from "../commands/config";
+import { registerDevices } from "../commands/devices";
 import { registerEventhooks } from "../commands/eventhooks";
 import { registerFeatures } from "../commands/features";
 import { registerGroupRules } from "../commands/group-rules";
@@ -16,6 +18,7 @@ import { registerPolicies } from "../commands/policies";
 import { registerPw } from "../commands/pw";
 import { registerRoles } from "../commands/roles";
 import { registerSchemas } from "../commands/schemas";
+import { registerTenant } from "../commands/tenant";
 import { registerTokens } from "../commands/tokens";
 import { registerUserTypes } from "../commands/user-types";
 import { registerUsers } from "../commands/users";
@@ -47,6 +50,9 @@ export function buildProgram(ctx: Ctx): Command {
   registerOrg(program, ctx);
   registerRoles(program, ctx, { users: usersCmd, groups: groupsCmd });
   registerPlatform(program, ctx);
+  registerTenant(program, ctx);
+  registerAuthServers(program, ctx);
+  registerDevices(program, ctx, usersCmd);
   registerInlinehooks(program, ctx);
   registerSchemas(program, ctx, usersCmd);
   registerGroupRules(groupsCmd, ctx);

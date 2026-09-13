@@ -1,6 +1,6 @@
 import { Option, type Command } from "commander";
 import type { Ctx } from "../cli/context";
-import { action, addOutputOptions, addVerbose, collect, subgroup } from "../cli/options";
+import { action, addOutputOptions, addVerbose, collect, int, subgroup } from "../cli/options";
 import { flatToNested, parseAssignments } from "../lib/dotted";
 import { getApp, getGroup, getUser, retrieve, selectField } from "../lib/lookup";
 
@@ -29,6 +29,14 @@ export function buildAppBody(name: string | undefined, signonmode: string | unde
 }
 
 const APPUSER_FIELDS = "id,credentials.userName,scope,status,syncState";
+const GRANT_FIELDS = "id,status,scopeId,issuer,created";
+// Deviation from the plan: the OAuth2RefreshToken schema (returned by this endpoint) has no
+// `issued` field, only `created` (same deviation as the auth-servers client tokens).
+const TOKEN_FIELDS = "id,status,created,expiresAt,userId,scopes";
+// Deviation from the plan: the JsonWebKey schema (returned by this endpoint) has no `status`
+// field, unlike AuthorizationServerJsonWebKey used by `auth-servers keys`.
+const KEY_FIELDS = "kid,use,created,expiresAt";
+const FEATURE_FIELDS = "name,status";
 const appUserOpts = (cmd: Command) => cmd
   .requiredOption("-a, --app <label-or-id>").requiredOption("-u, --user <id-or-fieldvalue>")
   .option("-f, --user-lookup-field <FIELDNAME>", "Users are matched against the ID or this profile field; default: 'login'.", "login");
@@ -124,6 +132,57 @@ export function registerApps(program: Command, ctx: Ctx): Command {
       const app = await getApp(client, appArg);
       const rv: any[] = await client.getAll(`/apps/${app.id}/groups`);
       return rv.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    }));
+
+  addOutputOptions(addVerbose(g.command("grants").description("List an app's OAuth 2.0 scope consent grants").argument("<app>")), GRANT_FIELDS)
+    .action(action(ctx, async (client, _o, appArg) => client.getAll(`/apps/${(await getApp(client, appArg)).id}/grants`)));
+
+  addOutputOptions(addVerbose(g.command("grant-add").description("Grant an app consent to request an Okta scope").argument("<app>")
+    .requiredOption("--scope <scopeId>", "Okta scope id, e.g. okta.users.read").requiredOption("--issuer <url>", "org authorization server issuer")), GRANT_FIELDS)
+    .action(action(ctx, async (client, opts, appArg) => {
+      const app = await getApp(client, appArg);
+      return client.json("POST", `/apps/${app.id}/grants`, { body: { scopeId: opts.scope, issuer: opts.issuer } });
+    }));
+
+  addVerbose(g.command("grant-delete").description("Revoke an app's scope consent grant").argument("<app>").argument("<grantId>"))
+    .action(action(ctx, async (client, _o, appArg, grantId) => {
+      const app = await getApp(client, appArg);
+      await client.json("DELETE", `/apps/${app.id}/grants/${grantId}`);
+      return `grant ${grantId} revoked from app ${app.id} (${app.label})`;
+    }));
+
+  addOutputOptions(addVerbose(g.command("tokens").description("List OAuth 2.0 refresh tokens issued to an app").argument("<app>")), TOKEN_FIELDS)
+    .action(action(ctx, async (client, _o, appArg) => client.getAll(`/apps/${(await getApp(client, appArg)).id}/tokens`)));
+
+  addVerbose(g.command("tokens-revoke").description("Revoke all tokens, or one token, issued to an app").argument("<app>").argument("[tokenId]"))
+    .action(action(ctx, async (client, _o, appArg, tokenId?: string) => {
+      const app = await getApp(client, appArg);
+      const path = tokenId ? `/apps/${app.id}/tokens/${tokenId}` : `/apps/${app.id}/tokens`;
+      await client.json("DELETE", path);
+      return tokenId ? `token ${tokenId} revoked from app ${app.id} (${app.label})` : `all tokens revoked from app ${app.id} (${app.label})`;
+    }));
+
+  addOutputOptions(addVerbose(g.command("keys").description("List an app's key credentials").argument("<app>")), KEY_FIELDS)
+    .action(action(ctx, async (client, _o, appArg) => client.getAll(`/apps/${(await getApp(client, appArg)).id}/credentials/keys`)));
+
+  addOutputOptions(addVerbose(g.command("generate-key").description("Generate a new key credential for an app").argument("<app>")
+    .option("--validity-years <n>", "key validity, in years", int, 2)), KEY_FIELDS)
+    .action(action(ctx, async (client, opts, appArg) => {
+      const app = await getApp(client, appArg);
+      return client.json("POST", `/apps/${app.id}/credentials/keys/generate`, { query: { validityYears: opts.validityYears } });
+    }));
+
+  addOutputOptions(addVerbose(g.command("features").description("List an app's provisioning features").argument("<app>")), FEATURE_FIELDS)
+    .action(action(ctx, async (client, _o, appArg) => client.getAll(`/apps/${(await getApp(client, appArg)).id}/features`)));
+
+  // Deviation from the plan: previewSAMLmetadataForApplication requires a `kid` query
+  // param (the signing key to preview) - there's no kid-less variant of this endpoint.
+  addVerbose(g.command("saml-metadata").description("Print an app's SAML SSO metadata XML for a given signing key").argument("<app>")
+    .requiredOption("--kid <kid>", "signing key id to preview"))
+    .action(action(ctx, async (client, opts, appArg) => {
+      const app = await getApp(client, appArg);
+      const rsp = await client.request("GET", `/apps/${app.id}/sso/saml/metadata`, { query: { kid: opts.kid }, headers: { Accept: "application/xml" } });
+      return rsp.text();
     }));
 
   return g;

@@ -1,3 +1,13 @@
+v19.1.0
+=======
+
+* New: auth-servers (+ scopes, claims, policies/rules, clients/tokens, keys/rotate-keys)
+* New: devices (+ suspend/unsuspend, users), device-assurances, users devices
+* New: mappings (+ update, properties), email-domains (+ verify, dns), behaviors, sms-templates,
+  realms, realm-assignments, captchas, rate-limits (settings, per-client, principals)
+* New: groups owners, apps grants/tokens/keys/generate-key/features/saml-metadata,
+  users clients/grants/subscriptions, roles permissions/subscriptions/resource-set-bindings/resource-set-resources
+
 v19.0.0
 =======
 

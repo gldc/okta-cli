@@ -16,19 +16,15 @@ const RESOURCE_FIELDS = "id,orn";
 const BINDING_MEMBER_FIELDS = "id,created,lastUpdated";
 const ROLE_TARGET_ALL_FIELDS = "assignmentType,expiration,orn";
 
-// The PUT (replace) body must not carry `isCloneable` (read-only) and must carry `permissions`
-// (required, but the GET representation used as the merge base doesn't reliably include it) -
-// fetch the role's permissions and add them when the merged body doesn't already have some.
-async function ensureCustomRolePermissions(client: OktaClient, existing: any, body: Record<string, unknown>): Promise<Record<string, unknown>> {
-  if (body.permissions !== undefined) return body;
-  const permissions: any[] = await client.getAll(`/iam/roles/${existing.id}/permissions`, { listKey: "permissions" });
-  return { ...body, permissions: permissions.map((p) => p.label) };
+// Okta's replace-role body (UpdateIamRoleRequest) accepts only label and description; the GET
+// representation carries id/created/lastUpdated/isCloneable and the API rejects any extra field.
+async function customRoleReplaceBody(_client: OktaClient, _existing: any, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return { label: body.label, description: body.description };
 }
 
 export const CUSTOM_ROLES: ResourceSpec = {
   name: "roles", description: "Admin roles: custom roles, resource sets, assignees", path: "/iam/roles", singular: "custom role", nameField: "label", defaultFields: "id,label,description", listKey: "roles",
-  replaceOmit: ["isCloneable"],
-  beforeReplace: ensureCustomRolePermissions,
+  beforeReplace: customRoleReplaceBody,
 };
 const RESOURCE_SETS: ResourceSpec = { name: "resource-sets", description: "Resource sets", path: "/iam/resource-sets", singular: "resource set", nameField: "label", defaultFields: "id,label,description", listKey: "resource-sets" };
 

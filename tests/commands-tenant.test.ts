@@ -122,7 +122,7 @@ describe("realms", () => {
     const t = testCtx(srv.url);
     await runTest(["realms", "list", "--search", 'profile.name co "Partners"'], t.ctx);
     expect(srv.calls[0]!.query).toEqual({ search: 'profile.name co "Partners"' });
-    expect(t.out.at(-1)).toBe("rlm1  Partners  PARTNER  false  2026-01-01T00:00:00.000Z  \n");
+    expect(t.out.at(-1)).toBe("rlm1  Partners  false  2026-01-01T00:00:00.000Z  \n");
   });
 });
 

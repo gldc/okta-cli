@@ -37,7 +37,7 @@ export const SMS_TEMPLATES: ResourceSpec = {
 
 export const REALMS: ResourceSpec = {
   name: "realms", description: "Realms", path: "/realms", singular: "realm",
-  nameField: "profile.name", defaultFields: "id,profile.name,profile.realmType,isDefault,created",
+  nameField: "profile.name", defaultFields: "id,profile.name,isDefault,created",
   listOptions: [{ flags: "--search <expr>", param: "search", description: "SCIM search" }],
 };
 

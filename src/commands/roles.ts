@@ -12,7 +12,7 @@ const ASSIGNMENT_FIELDS = "id,type,label,status,assignmentType";
 const PERMISSION_FIELDS = "label,created,lastUpdated";
 const SUBSCRIPTION_FIELDS = "notificationType,status,channels";
 const BINDING_FIELDS = "id";
-const RESOURCE_FIELDS = "id,orn,created";
+const RESOURCE_FIELDS = "id,orn";
 
 export const CUSTOM_ROLES: ResourceSpec = { name: "roles", description: "Admin roles: custom roles, resource sets, assignees", path: "/iam/roles", singular: "custom role", nameField: "label", defaultFields: "id,label,description", listKey: "roles" };
 const RESOURCE_SETS: ResourceSpec = { name: "resource-sets", description: "Resource sets", path: "/iam/resource-sets", singular: "resource set", nameField: "label", defaultFields: "id,label,description", listKey: "resource-sets" };

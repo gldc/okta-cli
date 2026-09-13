@@ -9,7 +9,7 @@ v19.2.0
 * New: agent-pools (+ updates, update-settings), identity-sources (+ sessions, bulk-*, users,
   groups), oauth-clients (role assignments + targets), roles governance-bundles/opt-in/opt-out,
   ui-schemas, first-party-app get/set, org preferences/footer/third-party-admin/privacy/
-  support-cases/email-bounces-remove/admin-app-assignment/client-privileges/children, directories
+  support-cases/email-bounces-remove/admin-app-assignment/client-privileges, directories
 * New: pam (service-accounts, okta-service-accounts), oin (api-services), well-known
   (org/webauthn/ssf/app-authenticator/apple-app-site-association/assetlinks),
   personal-settings, webauthn-registration (+ users webauthn-enrollments)

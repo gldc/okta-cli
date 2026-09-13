@@ -156,4 +156,20 @@ describe("org", () => {
     await runTest(["org", "client-privileges-set", "--enabled"], t.ctx);
     expect(srv.calls.at(-1)!.body).toEqual({ clientPrivilegesSetting: true });
   });
+
+  // Guards CHANGES.rst: the pinned spec's /api/v1/orgs has only POST createChildOrg, so there's
+  // deliberately no `org children` list command - the changelog must not advertise one.
+  test("children is not a registered command (no GET /orgs in the pinned spec)", async () => {
+    srv = startServer([]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["org", "children"], t.ctx)).not.toBe(0);
+    expect(srv.calls.length).toBe(0);
+  });
+
+  test("CHANGES.rst does not advertise the unimplemented `org children` command", async () => {
+    const changes = await Bun.file(`${import.meta.dir}/../CHANGES.rst`).text();
+    const line = changes.split("\n").find((l) => l.includes("admin-app-assignment/client-privileges"));
+    expect(line).toBeDefined();
+    expect(line).not.toContain("children");
+  });
 });

@@ -100,6 +100,15 @@ describe("ssf stream", () => {
     expect(srv.calls.at(-1)!.query).toEqual({ stream_id: "s1" });
   });
 
+  // Guards README.md: its "new in 19.2.0" quickstart line must include --stream-id, since
+  // stream-status requires it (see the "requires --stream-id" test above).
+  test("README's stream-status quickstart example includes the required --stream-id flag", async () => {
+    const readme = await Bun.file(`${import.meta.dir}/../README.md`).text();
+    const line = readme.split("\n").find((l) => l.includes("ssf stream-status"));
+    expect(line).toBeDefined();
+    expect(line).toContain("--stream-id");
+  });
+
   test("stream-verify posts stream_id and state", async () => {
     srv = startServer([{ method: "POST", path: "/api/v1/ssf/stream/verification" }]);
     const t = testCtx(srv.url);

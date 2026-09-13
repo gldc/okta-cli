@@ -66,7 +66,9 @@ function registerOin(program: Command, ctx: Ctx): void {
     .action(action(ctx, (client, _o, id) => client.json("GET", `/api-services/${id}`, { basePath: OIN_BASE })));
   addOutputOptions(addVerbose(oin.command("api-service-secrets").description("List an API service integration instance's client secrets").argument("<id>")), API_SERVICE_SECRET_FIELDS)
     .action(action(ctx, (client, _o, id) => client.getAll(`/api-services/${id}/credentials/secrets`, { basePath: OIN_BASE })));
-  addOutputOptions(addVerbose(oin.command("api-service-secret-add").description("Create a new client secret for an API service integration instance").argument("<id>")), API_SERVICE_SECRET_FIELDS)
+  // Not API_SERVICE_SECRET_FIELDS: the one-time plaintext client_secret (schema.d.ts ~13248) is only
+  // present on this creation response; every other response carries the hashed secret_hash instead.
+  addOutputOptions(addVerbose(oin.command("api-service-secret-add").description("Create a new client secret for an API service integration instance").argument("<id>")), "id,status,created,client_secret")
     .action(action(ctx, (client, _o, id) => client.json("POST", `/api-services/${id}/credentials/secrets`, { basePath: OIN_BASE })));
   for (const verb of ["activate", "deactivate"] as const) {
     addOutputOptions(addVerbose(oin.command(`api-service-secret-${verb}`).description(`${verb[0]!.toUpperCase()}${verb.slice(1)} an API service integration instance client secret`).argument("<id>").argument("<secretId>")), API_SERVICE_SECRET_FIELDS)

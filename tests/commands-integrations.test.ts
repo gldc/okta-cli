@@ -121,6 +121,13 @@ describe("oin api-services", () => {
     expect(JSON.parse(t.out.join("")).id).toBe("ocs2");
   });
 
+  test("api-service-secret-add default output does not drop the one-time client_secret", async () => {
+    srv = startServer([{ method: "POST", path: "/integrations/api/v1/api-services/0oa1/credentials/secrets", body: { id: "ocs2", status: "ACTIVE", created: "2026-01-01T00:00:00.000Z", client_secret: "top-secret-value" } }]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["oin", "api-service-secret-add", "0oa1"], t.ctx)).toBe(0);
+    expect(t.out.join("")).toContain("top-secret-value");
+  });
+
   test("api-service-secret-activate posts lifecycle/activate", async () => {
     srv = startServer([{ method: "POST", path: "/integrations/api/v1/api-services/0oa1/credentials/secrets/ocs1/lifecycle/activate", body: { id: "ocs1", status: "ACTIVE" } }]);
     const t = testCtx(srv.url);

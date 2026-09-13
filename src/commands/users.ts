@@ -10,6 +10,9 @@ import { ExitError, OktaApiError } from "../okta/errors";
 import { flattenSchemaProperties } from "./schemas";
 
 export const USER_FIELDS = "id,status,profile.login,profile.firstName,profile.lastName,profile.email";
+const CLIENT_FIELDS = "client_id,client_name,client_uri";
+const GRANT_FIELDS = "id,status,scopeId,clientId,issuer,created";
+const SUBSCRIPTION_FIELDS = "notificationType,status,channels";
 
 export interface AddUserParams {
   fields: Record<string, string | null>;
@@ -198,6 +201,46 @@ export function registerUsers(program: Command, ctx: Ctx): Command {
       fields: parseAssignments(opts.set), profileFields: parseAssignments(opts.profile), groupIds: opts.group,
       activate: opts.activate ?? true, provider: opts.provider ?? false, nextlogin: opts.nextlogin ?? false,
     })));
+
+  addOutputOptions(addVerbose(lookupFieldOpt(g.command("clients").description("List OAuth 2.0 clients that have tokens or grants for a user").argument("<user>"))), CLIENT_FIELDS)
+    .action(action(ctx, async (client, opts, user) => client.getAll(`/users/${(await getUser(client, user, opts.userLookupField)).id}/clients`)));
+
+  addOutputOptions(addVerbose(lookupFieldOpt(g.command("grants").description("List a user's OAuth 2.0 scope consent grants").argument("<user>")
+    .option("--client <clientId>", "scope to grants for this client only"))), GRANT_FIELDS)
+    .action(action(ctx, async (client, opts, user) => {
+      const u = await getUser(client, user, opts.userLookupField);
+      return client.getAll(opts.client ? `/users/${u.id}/clients/${opts.client}/grants` : `/users/${u.id}/grants`);
+    }));
+
+  addVerbose(lookupFieldOpt(g.command("grants-revoke").description("Revoke a user's grants: all, all for a client, or one by id").argument("<user>").argument("[grantId]")
+    .option("--client <clientId>", "revoke all grants for this client (cannot combine with a grant id)")))
+    .action(action(ctx, async (client, opts, user, grantId?: string) => {
+      const u = await getUser(client, user, opts.userLookupField);
+      // Deviation from the plan: there's no endpoint for revoking a single grant scoped to
+      // a client - /users/{id}/clients/{clientId}/grants only supports revoking all of them.
+      if (opts.client && grantId) throw new ExitError("Provide either --client or a grant id, not both");
+      if (grantId) {
+        await client.json("DELETE", `/users/${u.id}/grants/${grantId}`);
+        return `grant ${grantId} revoked from user ${u.id} (${u.profile.login})`;
+      }
+      const path = opts.client ? `/users/${u.id}/clients/${opts.client}/grants` : `/users/${u.id}/grants`;
+      await client.json("DELETE", path);
+      return opts.client
+        ? `all grants revoked for client ${opts.client} from user ${u.id} (${u.profile.login})`
+        : `all grants revoked from user ${u.id} (${u.profile.login})`;
+    }));
+
+  addOutputOptions(addVerbose(lookupFieldOpt(g.command("subscriptions").description("List a user's notification subscriptions").argument("<user>"))), SUBSCRIPTION_FIELDS)
+    .action(action(ctx, async (client, opts, user) => client.getAll(`/users/${(await getUser(client, user, opts.userLookupField)).id}/subscriptions`)));
+
+  for (const [verb, prep] of [["subscribe", "to"], ["unsubscribe", "from"]] as const) {
+    addVerbose(lookupFieldOpt(g.command(verb).description(`${verb[0]!.toUpperCase()}${verb.slice(1)} a user from a notification type`).argument("<user>").argument("<notificationType>")))
+      .action(action(ctx, async (client, opts, user, notificationType) => {
+        const u = await getUser(client, user, opts.userLookupField);
+        await client.json("POST", `/users/${u.id}/subscriptions/${notificationType}/${verb}`);
+        return `user ${u.id} (${u.profile.login}) ${verb}d ${prep} ${notificationType}`;
+      }));
+  }
 
   return g;
 }

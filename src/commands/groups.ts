@@ -1,4 +1,4 @@
-import type { Command } from "commander";
+import { Option, type Command } from "commander";
 import type { Ctx } from "../cli/context";
 import { action, addOutputOptions, addVerbose, subgroup, type Handler } from "../cli/options";
 import { getGroup, getUser, retrieve, selectProfileField } from "../lib/lookup";
@@ -6,6 +6,7 @@ import type { OktaClient } from "../okta/client";
 
 const GROUP_FIELDS = "id,type,profile.name";
 const USER_FIELDS = "id,profile.login,profile.firstName,profile.lastName,profile.email";
+const OWNER_FIELDS = "id,type,originType,displayName,resolved";
 
 export const groupsList: Handler = async (client, opts, partialName?: string) => {
   const query: Record<string, string> = {};
@@ -91,6 +92,28 @@ export function registerGroups(program: Command, ctx: Ctx): Command {
   addVerbose(g.command("clear").description("Remove all users from a group. This can take a while if the group is big.").argument("<name-or-id>")
     .option("-i, --id", "Use Okta group ID instead of the group name"))
     .action(action(ctx, groupsClear(ctx)));
+
+  addOutputOptions(addVerbose(g.command("owners").description("List a group's owners").argument("<name-or-id>")), OWNER_FIELDS)
+    .action(action(ctx, async (client, _o, nameOrId) => client.getAll(`/groups/${(await getGroup(client, nameOrId)).id}/owners`)));
+
+  // Deviation from the plan: the AssignGroupOwnerRequestBody schema only has `id` and
+  // `type`; there's no `originType` field on the request (it's a readonly response field).
+  addOutputOptions(addVerbose(g.command("owner-add").description("Add an owner to a group").argument("<name-or-id>")
+    .requiredOption("-u, --user <id-or-value>", "id of the new owner (or -f lookup value, when --type USER)")
+    .option("-f, --user-lookup-field <field>", "profile field to match when --type USER", "login")
+    .addOption(new Option("--type <type>", "owner type").choices(["USER", "GROUP"]).default("USER"))), OWNER_FIELDS)
+    .action(action(ctx, async (client, opts, nameOrId) => {
+      const group = await getGroup(client, nameOrId);
+      const owner = opts.type === "GROUP" ? await getGroup(client, opts.user) : await getUser(client, opts.user, opts.userLookupField);
+      return client.json("POST", `/groups/${group.id}/owners`, { body: { id: owner.id, type: opts.type } });
+    }));
+
+  addVerbose(g.command("owner-delete").description("Remove an owner from a group").argument("<name-or-id>").argument("<ownerId>"))
+    .action(action(ctx, async (client, _o, nameOrId, ownerId) => {
+      const group = await getGroup(client, nameOrId);
+      await client.json("DELETE", `/groups/${group.id}/owners/${ownerId}`);
+      return `owner ${ownerId} removed from group ${group.id} (${group.profile.name})`;
+    }));
 
   return g;
 }

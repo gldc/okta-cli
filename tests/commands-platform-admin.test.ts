@@ -8,7 +8,14 @@ let srv: ReturnType<typeof startServer>;
 afterEach(() => srv?.stop());
 
 test("paths exist in spec", () => {
-  for (const p of ["/logs", "/api-tokens", "/api-tokens/current", "/api-tokens/x", "/org", "/org/contacts", "/org/contacts/BILLING", "/org/privacy/oktaSupport", "/org/privacy/oktaSupport/grant", "/org/privacy/oktaSupport/extend", "/org/privacy/oktaSupport/revoke"]) expect(knownPath(p), p).toBe(true);
+  for (const p of [
+    "/logs", "/api-tokens", "/api-tokens/current", "/api-tokens/x", "/org", "/org/contacts", "/org/contacts/BILLING", "/org/privacy/oktaSupport", "/org/privacy/oktaSupport/grant", "/org/privacy/oktaSupport/extend", "/org/privacy/oktaSupport/revoke",
+    "/org/preferences", "/org/preferences/showEndUserFooter", "/org/preferences/hideEndUserFooter",
+    "/org/orgSettings/thirdPartyAdminSetting", "/org/privacy/oktaCommunication", "/org/privacy/oktaCommunication/optIn", "/org/privacy/oktaCommunication/optOut",
+    "/org/privacy/aerial", "/org/privacy/aerial/grant", "/org/privacy/aerial/revoke",
+    "/org/privacy/oktaSupport/cases", "/org/privacy/oktaSupport/cases/1", "/org/email/bounces/remove-list",
+    "/org/settings/autoAssignAdminAppSetting", "/org/settings/clientPrivilegesSetting",
+  ]) expect(knownPath(p), p).toBe(true);
 });
 
 describe("logs", () => {
@@ -87,5 +94,66 @@ describe("org", () => {
     await runTest(["org", "support-grant", "--output-fields", "support"], t.ctx);
     expect(srv.calls.at(-1)!.path).toBe("/api/v1/org/privacy/oktaSupport/grant");
     expect(t.out.at(-1)).toBe("ENABLED  \n");
+  });
+
+  test("preferences/footer/third-party-admin/communication/aerial/support-cases/email-bounces/admin-app-assignment/client-privileges", async () => {
+    srv = startServer([
+      { method: "GET", path: "/api/v1/org/preferences", body: { showEndUserFooter: true } },
+      { method: "POST", path: "/api/v1/org/preferences/showEndUserFooter", body: { showEndUserFooter: true } },
+      { method: "POST", path: "/api/v1/org/preferences/hideEndUserFooter", body: { showEndUserFooter: false } },
+      { method: "GET", path: "/api/v1/org/orgSettings/thirdPartyAdminSetting", body: { thirdPartyAdmin: false } },
+      { method: "POST", path: "/api/v1/org/orgSettings/thirdPartyAdminSetting", body: { thirdPartyAdmin: true } },
+      { method: "GET", path: "/api/v1/org/privacy/oktaCommunication", body: { optOutEmailUsers: false } },
+      { method: "POST", path: "/api/v1/org/privacy/oktaCommunication/optIn", body: { optOutEmailUsers: false } },
+      { method: "POST", path: "/api/v1/org/privacy/oktaCommunication/optOut", body: { optOutEmailUsers: true } },
+      { method: "GET", path: "/api/v1/org/privacy/aerial", body: { granted: false } },
+      { method: "POST", path: "/api/v1/org/privacy/aerial/grant", body: { granted: true } },
+      { method: "POST", path: "/api/v1/org/privacy/aerial/revoke", body: { granted: false } },
+      { method: "GET", path: "/api/v1/org/privacy/oktaSupport/cases", body: { supportCases: [{ caseNumber: "1", subject: "help" }] } },
+      { method: "PATCH", path: "/api/v1/org/privacy/oktaSupport/cases/1", body: { caseNumber: "1", subject: "help" } },
+      { method: "POST", path: "/api/v1/org/email/bounces/remove-list", body: { errors: [] } },
+      { method: "GET", path: "/api/v1/org/settings/autoAssignAdminAppSetting", body: { autoAssignAdminAppSetting: false } },
+      { method: "POST", path: "/api/v1/org/settings/autoAssignAdminAppSetting", body: { autoAssignAdminAppSetting: true } },
+      { method: "GET", path: "/api/v1/org/settings/clientPrivilegesSetting", body: { clientPrivilegesSetting: false } },
+      { method: "PUT", path: "/api/v1/org/settings/clientPrivilegesSetting", body: { clientPrivilegesSetting: true } },
+    ]);
+    const t = testCtx(srv.url);
+    await runTest(["org", "preferences", "-j"], t.ctx);
+    expect(JSON.parse(t.out.at(-1)!).showEndUserFooter).toBe(true);
+    await runTest(["org", "footer", "--show"], t.ctx);
+    expect(srv.calls.at(-1)!.path).toBe("/api/v1/org/preferences/showEndUserFooter");
+    await runTest(["org", "footer", "--hide"], t.ctx);
+    expect(srv.calls.at(-1)!.path).toBe("/api/v1/org/preferences/hideEndUserFooter");
+    expect(await runTest(["org", "footer"], t.ctx)).not.toBe(0);
+    await runTest(["org", "third-party-admin", "-j"], t.ctx);
+    expect(JSON.parse(t.out.at(-1)!).thirdPartyAdmin).toBe(false);
+    await runTest(["org", "third-party-admin-set", "--enabled"], t.ctx);
+    expect(srv.calls.at(-1)!.body).toEqual({ thirdPartyAdmin: true });
+    await runTest(["org", "communication", "-j"], t.ctx);
+    expect(JSON.parse(t.out.at(-1)!).optOutEmailUsers).toBe(false);
+    await runTest(["org", "communication-opt-in"], t.ctx);
+    expect(srv.calls.at(-1)!.path).toBe("/api/v1/org/privacy/oktaCommunication/optIn");
+    await runTest(["org", "communication-opt-out"], t.ctx);
+    expect(srv.calls.at(-1)!.path).toBe("/api/v1/org/privacy/oktaCommunication/optOut");
+    await runTest(["org", "aerial", "-j"], t.ctx);
+    expect(JSON.parse(t.out.at(-1)!).granted).toBe(false);
+    await runTest(["org", "aerial-grant", "-s", "accountId=acc1"], t.ctx);
+    expect(srv.calls.at(-1)!.body).toEqual({ accountId: "acc1" });
+    await runTest(["org", "aerial-revoke"], t.ctx);
+    expect(srv.calls.at(-1)!.path).toBe("/api/v1/org/privacy/aerial/revoke");
+    await runTest(["org", "support-cases", "--output-fields", "caseNumber,subject"], t.ctx);
+    expect(t.out.at(-1)).toBe("1  help  \n");
+    await runTest(["org", "support-case-set", "1", "-s", "impersonation.status=ENABLED"], t.ctx);
+    expect(srv.calls.at(-1)!.body).toEqual({ impersonation: { status: "ENABLED" } });
+    await runTest(["org", "email-bounces-remove", "-s", "emailAddresses=bob@x.com"], t.ctx);
+    expect(srv.calls.at(-1)!.body).toEqual({ emailAddresses: "bob@x.com" });
+    await runTest(["org", "admin-app-assignment", "-j"], t.ctx);
+    expect(JSON.parse(t.out.at(-1)!).autoAssignAdminAppSetting).toBe(false);
+    await runTest(["org", "admin-app-assignment-set", "--enabled"], t.ctx);
+    expect(srv.calls.at(-1)!.body).toEqual({ autoAssignAdminAppSetting: true });
+    await runTest(["org", "client-privileges", "-j"], t.ctx);
+    expect(JSON.parse(t.out.at(-1)!).clientPrivilegesSetting).toBe(false);
+    await runTest(["org", "client-privileges-set", "--enabled"], t.ctx);
+    expect(srv.calls.at(-1)!.body).toEqual({ clientPrivilegesSetting: true });
   });
 });

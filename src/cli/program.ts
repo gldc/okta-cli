@@ -5,6 +5,7 @@ import { registerBrands } from "../commands/brands";
 import { registerAuthenticators, registerUserSecurity } from "../commands/authenticators";
 import { registerConfig } from "../commands/config";
 import { registerDevices } from "../commands/devices";
+import { registerDirectory } from "../commands/directory";
 import { registerEventhooks } from "../commands/eventhooks";
 import { registerFeatures } from "../commands/features";
 import { registerGroupRules } from "../commands/group-rules";
@@ -65,6 +66,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerUserSecurity(usersCmd, ctx);
   registerIdps(program, ctx);
   registerSecurity(program, ctx);
+  registerDirectory(program, ctx);
   registerMisc(program, ctx);
   return program;
 }

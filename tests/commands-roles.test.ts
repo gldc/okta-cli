@@ -9,7 +9,11 @@ let srv: ReturnType<typeof startServer>;
 afterEach(() => srv?.stop());
 
 test("paths exist", () => {
-  for (const p of ["/iam/roles", "/iam/assignees/users", "/iam/resource-sets", "/users/u/roles", "/users/u/roles/r", "/groups/g/roles", "/groups/g/roles/r"]) expect(knownPath(p), p).toBe(true);
+  for (const p of [
+    "/iam/roles", "/iam/assignees/users", "/iam/resource-sets", "/users/u/roles", "/users/u/roles/r", "/groups/g/roles", "/groups/g/roles/r",
+    "/iam/governance/bundles", "/iam/governance/bundles/b1", "/iam/governance/bundles/b1/entitlements", "/iam/governance/bundles/b1/entitlements/e1/values",
+    "/iam/governance/optIn", "/iam/governance/optOut",
+  ]) expect(knownPath(p), p).toBe(true);
 });
 
 test("roleAssignmentBody", () => {
@@ -72,5 +76,31 @@ describe("roles", () => {
     await runTest(["groups", "unassign-role", "00g1", "ra3"], t.ctx);
     expect(t.out.at(-1)).toBe("role assignment ra3 removed from group 00g1 (Engineering)\n");
     expect(await runTest(["users", "assign-role", "bob@x.com", "-t", "NOT_A_ROLE"], t.ctx)).not.toBe(0);
+  });
+});
+
+describe("roles governance", () => {
+  test("bundles list/get, entitlements, values, opt-in/out", async () => {
+    srv = startServer([
+      { method: "GET", path: "/api/v1/iam/governance/bundles", body: { bundles: [{ id: "b1", name: "Bundle 1", description: "d" }] } },
+      { method: "GET", path: "/api/v1/iam/governance/bundles/b1", body: { id: "b1", name: "Bundle 1", description: "d", status: "ACTIVE" } },
+      { method: "GET", path: "/api/v1/iam/governance/bundles/b1/entitlements", body: { entitlements: [{ id: "e1", name: "Entitlement 1", role: "r1", description: "d" }] } },
+      { method: "GET", path: "/api/v1/iam/governance/bundles/b1/entitlements/e1/values", body: { entitlementValues: [{ id: "v1", name: "Value 1", value: "orn:okta:..." }] } },
+      { method: "POST", path: "/api/v1/iam/governance/optIn", body: { optedIn: true } },
+      { method: "POST", path: "/api/v1/iam/governance/optOut", body: { optedIn: false } },
+    ]);
+    const t = testCtx(srv.url);
+    await runTest(["roles", "governance-bundles", "--output-fields", "id,name"], t.ctx);
+    expect(t.out.at(-1)).toBe("b1  Bundle 1  \n");
+    await runTest(["roles", "governance-bundle", "b1", "--output-fields", "status"], t.ctx);
+    expect(t.out.at(-1)).toBe("ACTIVE  \n");
+    await runTest(["roles", "governance-bundle-entitlements", "b1", "--output-fields", "id,role"], t.ctx);
+    expect(t.out.at(-1)).toBe("e1  r1  \n");
+    await runTest(["roles", "governance-entitlement-values", "b1", "e1", "--output-fields", "id"], t.ctx);
+    expect(t.out.at(-1)).toBe("v1  \n");
+    await runTest(["roles", "governance-opt-in", "-j"], t.ctx);
+    expect(srv.calls.at(-1)!.path).toBe("/api/v1/iam/governance/optIn");
+    await runTest(["roles", "governance-opt-out", "-j"], t.ctx);
+    expect(srv.calls.at(-1)!.path).toBe("/api/v1/iam/governance/optOut");
   });
 });

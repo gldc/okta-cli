@@ -18,6 +18,7 @@ import { registerPolicies } from "../commands/policies";
 import { registerPw } from "../commands/pw";
 import { registerRoles } from "../commands/roles";
 import { registerSchemas } from "../commands/schemas";
+import { registerTenant } from "../commands/tenant";
 import { registerTokens } from "../commands/tokens";
 import { registerUserTypes } from "../commands/user-types";
 import { registerUsers } from "../commands/users";
@@ -49,6 +50,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerOrg(program, ctx);
   registerRoles(program, ctx, { users: usersCmd, groups: groupsCmd });
   registerPlatform(program, ctx);
+  registerTenant(program, ctx);
   registerAuthServers(program, ctx);
   registerDevices(program, ctx, usersCmd);
   registerInlinehooks(program, ctx);

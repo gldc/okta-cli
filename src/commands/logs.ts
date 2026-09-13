@@ -1,0 +1,32 @@
+import { InvalidArgumentError, Option, type Command } from "commander";
+import type { Ctx } from "../cli/context";
+import { action, addOutputOptions, addVerbose, int, subgroup } from "../cli/options";
+
+export const LOG_FIELDS = "published,eventType,outcome.result,actor.alternateId,client.ipAddress,displayMessage";
+
+const pageSize = (v: string): number => {
+  const n = int(v);
+  if (n < 1 || n > 1000) throw new InvalidArgumentError("must be between 1 and 1000");
+  return n;
+};
+const limit = (v: string): number => {
+  const n = int(v);
+  if (n < 0) throw new InvalidArgumentError("must be 0 or greater");
+  return n;
+};
+
+export function registerLogs(program: Command, ctx: Ctx): void {
+  const g = subgroup(program, "logs", "System log operations");
+  addOutputOptions(addVerbose(g.command("list").description("Query the System Log (GET /logs)")
+    .option("--since <iso8601>", "Events after this timestamp")
+    .option("--until <iso8601>", "Events before this timestamp")
+    .option("-f, --filter <expr>", 'SCIM filter, e.g. eventType eq "user.session.start"')
+    .option("-q, --query <q>", "Keyword search")
+    .addOption(new Option("--sort-order <order>", "sort order").choices(["ASCENDING", "DESCENDING"]).default("ASCENDING"))
+    .option("-l, --limit <n>", "stop after this many events in total (0 = unlimited)", limit, 1000)
+    .option("--page-size <n>", "events per request (1-1000)", pageSize, 1000)), LOG_FIELDS)
+    .action(action(ctx, (client, opts) => client.getAll("/logs", {
+      query: { since: opts.since, until: opts.until, filter: opts.filter, q: opts.query, sortOrder: opts.sortOrder, limit: opts.limit > 0 ? Math.min(opts.pageSize, opts.limit) : opts.pageSize },
+      max: opts.limit > 0 ? opts.limit : undefined,
+    })));
+}

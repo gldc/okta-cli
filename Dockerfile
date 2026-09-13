@@ -1,11 +1,10 @@
-FROM python:3.6
+FROM oven/bun:1.3.5
 
-WORKDIR /usr/src/app
+WORKDIR /app
+
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production
 
 COPY . .
 
-RUN pip install --no-cache-dir -r requirements.txt ; \
-    pip install --no-cache-dir -r requirements-test.txt
-
-
-CMD [ "pytest" ]
+ENTRYPOINT ["bun", "src/main.ts"]

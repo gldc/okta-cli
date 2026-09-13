@@ -1,36 +1,38 @@
 # Okta-CLI
 
-**NOW WITH HOMEBREW TAP ON A MAC - SEE "INSTALLATION" BELOW :))**
-
-This is a python-based CLI tool for Okta.
+This is a CLI tool for Okta, written in TypeScript and run on [Bun](https://bun.sh).
 **It is not made or maintained by or in any way affiliated with anyone working at Okta.**
-It is mainly driven by the personal needs of its author, although the feature set is becoming quite complete now.
 
-It basically is a CLI wrapper around the [Okta REST API](https://developer.okta.com/docs/reference/).
+It is a CLI wrapper around the [Okta REST API](https://developer.okta.com/docs/reference/).
 
 **NOTE:** This is _not_ the same as Okta's own [`okta`](https://cli.okta.com/) CLI interface.
 The latter is apparently used for setting up the source for development projects.
 
-## Requirements
-
-- A Mac or Linux machine, it _might_ work on Windows (untested)
-- Python 3.7+, for the change log see [CHANGES.rst](CHANGES.rst).
-- unfortunately **Python 3.11 is not _yet_ supported** due to a dependency.
+Starting with 19.0.0 this is a full rewrite of the previous Python tool (see
+[CHANGES.rst](CHANGES.rst)). The command surface is drop-in compatible with 18.1.2, plus a
+large set of new command groups (see Quickstart below). Python is no longer required.
 
 ## Installation
 
-### Mac & homebrew
+### Release binaries
+
+Download a prebuilt single-file binary from the
+[GitHub Releases](https://github.com/gldc/okta-cli/releases) page: `darwin-arm64`,
+`darwin-x64`, `linux-x64` and `linux-arm64` are published for every tagged version. Make it
+executable and put it on your `PATH`.
+
+### Via Bun
 
 ```bash
-brew tap flypenguin/okta-cli
-brew install okta-cli
+bun install -g github:gldc/okta-cli
+okta-cli config new
 ```
 
-### All others
+or run without installing:
 
-- create a python virtualenv: `mkvirtualenv okta-cli`
-- `pip install okta-cli`
-- start using it: `okta-cli config new`
+```bash
+bunx github:gldc/okta-cli config new
+```
 
 ## Quickstart
 
@@ -39,10 +41,8 @@ maybe `okta-cli users update -h` or maybe `okta-cli apps add -h` ... those are p
 most interesting ones.
 
 ```bash
-$ pip install okta-cli                                # install :)
-
 $ okta-cli config new \                               # create a new okta profile
-           -n my-profile -\
+           -n my-profile \
            -u https://my.okta.url \
            -t API_TOKEN
 
@@ -59,7 +59,7 @@ $ okta-cli users list \                               # search users with a quer
            -f 'profile.email eq "my@email.com"'
 $ okta-cli users update id012345678 \                 # update a field of a user record
            --set profile.email=my@other.email.com
-$ okta cli users groups adduser \                     # add a user to a group
+$ okta-cli groups adduser -g my_group -u my_user      # add a user to a group
 $ okta-cli users get my-login -vvvvv                  # see http debug output
 $ okta-cli users bulk-add add-list.csv                # Bulk-ADD users
 $ okta-cli users bulk-update update-list.xlsx         # Bulk-UPDATE users
@@ -67,15 +67,29 @@ $ okta-cli users bulk-update update-list.xlsx         # Bulk-UPDATE users
 $ okta-cli features -h                                # get help
 $ okta-cli features list                              # list okta server-side features
 $ okta-cli features enable "Recent Activity"          # enable an Okta feature
-           -g app1_rollout \
-           -u fred.flintstone@flintstones.com
+
+# new in 19.0.0
+$ okta-cli logs list --since 2026-09-01T00:00:00.000Z # tail the system log since a timestamp
+$ okta-cli policies list -t PASSWORD                  # list policies of a given type
+$ okta-cli schemas user add-property \                # add a custom property to the user schema
+           -n employeeLevel -t integer
+$ okta-cli users roles some-login                     # list a user's admin role assignments
+$ okta-cli inlinehooks list                           # list inline hooks
 
 $ okta-cli version                                    # print version and exit
 ```
 
 ## Configuration
 
-Running `config new` (see above) will store a JSON configuration file in the directory determined by the `appdirs` module.
+Running `config new` (see above) stores a JSON configuration file in an OS-specific
+directory:
+
+- macOS: `~/Library/Application Support/okta-cli/config.json`
+- Linux: `${XDG_CONFIG_HOME:-~/.config}/okta-cli/config.json`
+- Windows: `%LOCALAPPDATA%\okta-cli\okta-cli\config.json`
+
+`OKTA_CLI_CONFIG` overrides the config file path entirely. `OKTA_URL` and `OKTA_TOKEN`, set
+together, bypass the config file and profile system altogether.
 
 ## CSV / Excel file formats
 
@@ -127,9 +141,79 @@ Note the trailing comma.
 
 Reasoning: `okta-cli` tries to determine the column separator, and without one ... determination is tricky, and `okta-cli` will shamelessly crash.
 
+## Output formats
+
+Commands that return an object or a list support `-j/--json` (indented, sorted keys),
+`-y/--yaml`, `--csv` (`--csv-dialect excel|excel-tab|unix`, sorted dotted keys) and, for
+commands with default fields, a table (`--output-fields <csv>` to override, `--colwidth <n>`
+to truncate cells). Commands that print a plain confirmation string (e.g. `users
+sessions-revoke`, `tokens revoke`, `users unlink`) only take `-v`.
+
+With no output flag: commands that have default table fields print a table if the result is
+non-empty, otherwise JSON; commands without default table fields always print JSON.
+
+## Exit codes
+
+- `0`: success
+- `1`: CLI usage error (bad flags/arguments)
+- `253`: Okta API error (`OKTA_API_ERROR: <code>: <summary>` on stdout, one `errorSummary:`
+  line per cause)
+- `254`: unexpected/internal error (stack trace + `CRITICAL_ERROR` banner on stderr)
+- `255`: `ERROR:`/`COMMUNICATION_ERROR:` (stderr)
+
+## Development
+
+```bash
+bun install
+bun run check       # typecheck + bun test
+bun run gen:types    # regenerate src/okta/schema.d.ts and spec-paths.json from the pinned spec
+bun run build        # bun build --compile -> dist/okta-cli
+```
+
+Types are generated from the Okta management OpenAPI spec, pinned to version `2026.08.4`
+(see `scripts/gen-types.ts`). Bumping the pin requires re-running `gen:types` and `check`.
+
+## Compatibility notes
+
+19.0.0 is drop-in compatible with 18.1.2's command surface (arguments, flags, default table
+fields, message strings and exit codes), with these intentional deviations:
+
+Bug fixes carried over from Python (behavior differs from 18.1.2, matches what 18.1.2 should
+have done):
+
+- `eventhooks activate` actually activates instead of erroring.
+- `groups clear` deletes the resolved group's id from the URL path instead of the raw
+  argument.
+- `config current-context` prints `No profile set.` instead of silently printing nothing.
+- `groups list -a` is a flag (`--all`) instead of erroring because it expected a value.
+
+Other intentional deviations, all judgment calls where 18.1.2's behavior wasn't worth
+matching exactly:
+
+- `groups rules list` uses `--search <text>` with no `-s` short form, because `-s` is taken
+  by `--set` on the shared option set.
+
+- Sorting uses locale-aware string comparison (JavaScript's default `Array.sort`/
+  `localeCompare`), not Python's code-point `sorted()`.
+- `dump`'s default output directory name uses a UTC timestamp, not local time.
+- CLI usage errors (bad flags/arguments) exit `1`; 18.1.2's Click-based CLI exited `2`.
+- Commands whose 18.1.2 default table fields were empty (`users activate`,
+  `users reactivate`, `apps addgroup`, `apps groups`, `raw`) print JSON by default instead of
+  an empty table.
+- `users get` with an id-shaped argument (starts with `0`, 20 characters) that 404s falls
+  back to a login/search lookup instead of exiting with the Okta API error.
+- JSON output is UTF-8 and does not escape non-ASCII characters; 18.1.2 escaped them by
+  default when no `-j` flag was given.
+- A `429` is retried up to 10 times, sleeping until `X-Rate-Limit-Reset`, then fails with
+  `COMMUNICATION_ERROR`; 18.1.2 retried forever. On rate-limited orgs, pass a lower
+  `-w`/`--workers` to `bulk-add`/`bulk-update`/`dump`.
+- `-f`/`--user-lookup-field` values other than `login` still probe `GET /users/{value}`
+  first before falling back to a profile-field search, same as 18.1.2.
+
 ## References
 
 This project uses a few nice other projects:
 
-- [Click](https://click.palletsprojects.com)
-- [appdirs](https://pypi.org/project/appdirs/)
+- [Bun](https://bun.sh)
+- [Commander.js](https://github.com/tj/commander.js)
+- [openapi-typescript](https://openapi-ts.dev/)

@@ -1,3 +1,15 @@
+v19.0.0
+=======
+
+* Rewrite in TypeScript on Bun; single-binary releases; Python no longer required
+* Drop-in compatible command surface with 18.1.2 (see README "Compatibility notes" for 4 bug fixes)
+* New: logs, tokens, roles (+ users/groups role assignment), org, trusted-origins, domains, zones, log-streams
+* New: inlinehooks, hook-keys, schemas (user/group/app, add/remove custom properties), linked-objects, groups rules, user-types
+* New: policies (+ rules, mappings, clone), authenticators, sessions, idps, users factors/blocks/sessions-revoke/unsuspend/idps
+* New: users update --from-json, users replace, users profile, users schema-check
+* New: OKTA_CLI_CONFIG, OKTA_URL/OKTA_TOKEN environment overrides
+* Types generated from Okta management OpenAPI spec 2026.08.4
+
 v18.1.2
 =======
 

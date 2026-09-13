@@ -35,8 +35,8 @@ const GRANT_FIELDS = "id,status,scopeId,issuer,created";
 const TOKEN_FIELDS = "id,status,created,expiresAt,userId,scopes";
 // Deviation from the plan: the JsonWebKey schema (returned by this endpoint) has no `status`
 // field, unlike AuthorizationServerJsonWebKey used by `auth-servers keys`.
-const KEY_FIELDS = "kid,use,created,expiresAt";
-const FEATURE_FIELDS = "name,status";
+export const KEY_FIELDS = "kid,use,created,expiresAt";
+export const FEATURE_FIELDS = "name,status";
 const appUserOpts = (cmd: Command) => cmd
   .requiredOption("-a, --app <label-or-id>").requiredOption("-u, --user <id-or-fieldvalue>")
   .option("-f, --user-lookup-field <FIELDNAME>", "Users are matched against the ID or this profile field; default: 'login'.", "login");

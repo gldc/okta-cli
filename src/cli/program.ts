@@ -1,5 +1,6 @@
 import { Command, CommanderError } from "commander";
 import { registerApps } from "../commands/apps";
+import { registerAppsExtra } from "../commands/apps-extra";
 import { registerAuthServers } from "../commands/auth-servers";
 import { registerBrands } from "../commands/brands";
 import { registerAuthenticators, registerUserSecurity } from "../commands/authenticators";
@@ -46,7 +47,8 @@ export function buildProgram(ctx: Ctx): Command {
   registerUsersBulk(usersCmd, ctx);
   registerPw(program, ctx);
   const groupsCmd = registerGroups(program, ctx);
-  registerApps(program, ctx);
+  const appsCmd = registerApps(program, ctx);
+  registerAppsExtra(appsCmd, ctx);
   registerFeatures(program, ctx);
   registerEventhooks(program, ctx);
   registerLogs(program, ctx);

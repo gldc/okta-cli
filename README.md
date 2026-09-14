@@ -393,7 +393,7 @@ must still sit behind something that authenticates (the Runlayer gateway, a side
 expose it directly to the internet.
 
 **Deploying to Runlayer:** build the connector from the repo's `Dockerfile` (`bun build
---compile` into a Debian slim image, entrypoint `okta-cli`, default command `mcp serve`), then:
+--compile` into a Debian slim image, no entrypoint, default command `okta-cli mcp serve`), then:
 
 ```sh
 uvx runlayer deploy pull --deployment-id <id>    # writes an `id` into a fresh manifest

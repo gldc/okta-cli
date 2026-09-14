@@ -6,7 +6,7 @@ RUN bun install --frozen-lockfile
 COPY . .
 RUN bun build --compile src/main.ts --outfile /out/okta-cli
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/okta-cli /usr/local/bin/okta-cli
 # The MCP server keeps OAuth access tokens in memory only; nothing is written to $HOME.

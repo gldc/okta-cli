@@ -4,6 +4,7 @@ runtime: docker
 build:
   dockerfile: Dockerfile
   context: .
+  target: runtime   # Runlayer Deploy requires an explicit target for multi-stage Dockerfiles
   platform: arm
 service:
   port: 8000

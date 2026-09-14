@@ -13,5 +13,7 @@ COPY --from=build /out/okta-cli /usr/local/bin/okta-cli
 ENV OKTA_CLI_NO_TOKEN_CACHE=1 OKTA_MCP_HOST=0.0.0.0 OKTA_MCP_PORT=8000 OKTA_MCP_READ_ONLY=1 HOME=/tmp
 USER 65532:65532
 EXPOSE 8000
-ENTRYPOINT ["okta-cli"]
-CMD ["mcp", "serve"]
+# No ENTRYPOINT: Runlayer Deploy (and other schedulers) override the command with
+# `sh -c ...` for helper containers built from this same image, which a binary
+# entrypoint would swallow. Run the CLI as `docker run <image> okta-cli users list`.
+CMD ["okta-cli", "mcp", "serve"]

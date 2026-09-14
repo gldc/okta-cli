@@ -401,6 +401,8 @@ cp runlayer.yaml.example runlayer.yaml           # fill in the `id`, then edit e
 uvx runlayer deploy --config runlayer.yaml
 ```
 
+The image has no `ENTRYPOINT`, only `CMD ["okta-cli", "mcp", "serve"]`. Runlayer Deploy starts helper containers from the same image with a `sh -c ...` command, which a binary entrypoint would swallow. Run the CLI from the image as `docker run <image> okta-cli users list`.
+
 Credentials (`OKTA_URL` + `OKTA_TOKEN`, or the OAuth service-app variables from
 [Authentication](#authentication)) are set as env vars on the deployment, never baked into the
 image or the manifest.

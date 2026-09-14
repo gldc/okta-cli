@@ -1,6 +1,6 @@
 {
   "name": "okta-cli",
-  "version": "19.4.0",
+  "version": "19.5.0",
   "description": "An Okta command line interface for scripting and quickly performing routine tasks",
   "license": "MIT",
   "type": "module",

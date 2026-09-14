@@ -13,7 +13,9 @@ import { registerGroupRules } from "../commands/group-rules";
 import { registerGroups } from "../commands/groups";
 import { registerGovernance } from "../commands/governance";
 import { registerGovernanceCampaigns } from "../commands/governance-campaigns";
+import { registerGovernanceCollections } from "../commands/governance-collections";
 import { registerGovernanceEntitlements } from "../commands/governance-entitlements";
+import { registerGovernanceLabels } from "../commands/governance-labels";
 import { registerGovernancePrincipals } from "../commands/governance-principals";
 import { registerIdps } from "../commands/idps";
 import { registerInlinehooks } from "../commands/inlinehooks";
@@ -72,6 +74,8 @@ export function buildProgram(ctx: Ctx): Command {
   registerGovernanceCampaigns(govCmd, ctx);
   registerGovernanceEntitlements(govCmd, ctx);
   registerGovernancePrincipals(govCmd, ctx);
+  registerGovernanceCollections(govCmd, ctx);
+  registerGovernanceLabels(govCmd, ctx);
   registerUserTypes(program, ctx);
   registerPolicies(program, ctx);
   registerAuthenticators(program, ctx);

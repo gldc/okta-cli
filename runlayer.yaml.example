@@ -1,0 +1,26 @@
+# Copy to runlayer.yaml after `uvx runlayer deploy pull --deployment-id <id>` writes the real `id`.
+name: okta
+runtime: docker
+build:
+  dockerfile: Dockerfile
+  context: .
+  platform: arm
+service:
+  port: 8000
+  path: /mcp
+infrastructure:
+  cpu: 256
+  memory: 512
+  platform: arm
+env:
+  OKTA_URL: https://your-org.okta.com
+  # Either an SSWS API token ...
+  OKTA_TOKEN: "<set in the Runlayer UI, not here>"
+  # ... or an OAuth 2.0 service app (see README "Authentication"):
+  # OKTA_CLIENT_ID: 0oa...
+  # OKTA_PRIVATE_KEY: '{"kty":"RSA",...}'
+  # OKTA_SCOPES: okta.users.read okta.groups.read
+  # OKTA_DPOP: "1"
+  OKTA_MCP_READ_ONLY: "1"
+  # OKTA_MCP_INCLUDE: users_*,groups_*
+  # OKTA_MCP_EXCLUDE: "*_delete"

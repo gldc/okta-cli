@@ -26,6 +26,7 @@ import { registerIdps } from "../commands/idps";
 import { registerInlinehooks } from "../commands/inlinehooks";
 import { registerIntegrations } from "../commands/integrations";
 import { registerLogs } from "../commands/logs";
+import { registerMcp } from "../commands/mcp";
 import { registerMisc } from "../commands/misc";
 import { registerOrg } from "../commands/org";
 import { registerPlatform } from "../commands/platform";
@@ -96,6 +97,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerDirectory(program, ctx);
   registerIntegrations(program, ctx, usersCmd);
   registerMisc(program, ctx);
+  registerMcp(program, ctx, () => buildProgram(ctx));
   return program;
 }
 

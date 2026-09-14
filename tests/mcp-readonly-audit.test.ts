@@ -70,5 +70,5 @@ describe("mcp read-only audit", () => {
       throw new Error(`${bad.size} readOnly tool(s) issued non-GET requests:\n${offenders}`);
     }
     expect(bad.size).toBe(0);
-  });
+  }, 60_000); // ~317 sequential runCli invocations; the default 5 s budget is too tight on CI runners
 });

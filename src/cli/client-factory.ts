@@ -11,8 +11,9 @@ export function profileKind(profile: Profile): "ssws" | "oauth" {
 }
 
 // A private key that arrived as text (an env var or a file's contents) is a JWK when it's
-// JSON, else it's treated as a PEM string.
-function parseKeyText(text: string): JsonWebKey | string {
+// JSON, else it's treated as a PEM string. Exported for reuse by `config new --client-id`
+// (src/commands/config.ts), which stores a --private-key-file's contents the same way.
+export function parseKeyText(text: string): JsonWebKey | string {
   try {
     const parsed = JSON.parse(text);
     if (parsed && typeof parsed === "object") return parsed as JsonWebKey;

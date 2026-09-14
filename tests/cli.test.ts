@@ -20,7 +20,7 @@ describe("cli framework", () => {
   test("version", async () => {
     const t = testCtx("http://127.0.0.1:1");
     expect(await runCli(["version"], t.ctx)).toBe(0);
-    expect(t.out.join("")).toBe("19.3.0\n");
+    expect(t.out.join("")).toBe("19.4.0\n");
     expect(await runCli(["--version"], t.ctx)).toBe(0);
   });
 

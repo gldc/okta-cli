@@ -102,8 +102,71 @@ $ okta-cli users factor-enroll my-login \             # enroll an SMS factor for
 $ okta-cli users role-targets my-login <assignmentId> # list a role assignment's group/app targets
 $ okta-cli idps signing-keys my-idp                   # list an IdP's signing key credentials
 
+# new in 19.4.0
+$ okta-cli config new -n svc -u https://my.okta.com \ # create an OAuth service-app profile
+           --client-id 0oa... --private-key-file key.pem \
+           --scopes "okta.users.read okta.groups.read"
+$ okta-cli config test                                # verify a profile can authenticate
+
 $ okta-cli version                                    # print version and exit
 ```
+
+## Authentication
+
+`config new` supports two ways to authenticate against the Okta Management API:
+
+- **SSWS API token** (`-t/--token`, the default): a static token from a user, created in
+  Admin Console → **Security → API → Tokens**.
+- **OAuth 2.0 service app** (`--client-id`): client-credentials with `private_key_jwt`,
+  scoped to exactly the `okta.*` scopes you grant, backed by a private key instead of a
+  bearer secret. Optional DPoP-bound tokens (RFC 9449) for orgs that require it.
+
+### Setting up an OAuth service app
+
+1. Admin Console → **Applications** → **Create App Integration** → **API Services**.
+2. Grant it the scopes it needs under **Okta API Scopes**, e.g. `okta.users.read
+   okta.groups.read`.
+3. Generate a key pair and add the public half under **General → Public keys**:
+
+   ```bash
+   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out key.pem
+   openssl pkey -in key.pem -pubout -out public.pem
+   ```
+
+   Admin Console's "Add key" dialog wants the public key as a JWK, not the raw PEM above -
+   either use its own "Generate new key" button instead (simplest: it hands you the private
+   key once, in JWK form, and keeps the public half itself), or convert `public.pem` to a
+   JWK yourself, e.g. with `bunx pem-jwk public.pem`.
+4. `okta-cli config new -n svc -u https://my.okta.com --client-id <clientId>
+   --private-key-file key.pem --scopes "okta.users.read okta.groups.read"` (see `config new
+   -h` for `--kid`, `--dpop`, `--keep-file-ref`).
+5. `okta-cli config test` confirms the profile authenticates.
+
+### DPoP
+
+Pass `--dpop` when the service app requires DPoP-bound tokens. okta-cli also detects this
+automatically from an `invalid_dpop_proof` response on a profile that didn't ask for it, and
+switches over without needing a restart.
+
+### Environment variable overrides
+
+| Variable | Auth | Meaning |
+| --- | --- | --- |
+| `OKTA_URL` | both | org base URL, e.g. `https://my.okta.com` |
+| `OKTA_TOKEN` | SSWS | API token (with `OKTA_URL`) |
+| `OKTA_CLIENT_ID` | OAuth | service app client ID |
+| `OKTA_PRIVATE_KEY` | OAuth | private key contents (PEM or JWK JSON) |
+| `OKTA_PRIVATE_KEY_FILE` | OAuth | path to the private key (alternative to `OKTA_PRIVATE_KEY`) |
+| `OKTA_SCOPES` | OAuth | space-separated `okta.*` scopes |
+| `OKTA_KID` | OAuth | key id, if the key doesn't carry its own `kid` |
+| `OKTA_DPOP` | OAuth | set to `1` to force DPoP |
+
+### Token cache
+
+OAuth access tokens are cached on disk next to the config file, as `tokens.json` (mode
+`0600`), keyed by org URL + client ID + scopes, and refreshed automatically before they
+expire. Set `OKTA_CLI_NO_TOKEN_CACHE=1` to disable the cache, e.g. for a CI job that
+shouldn't persist tokens between runs.
 
 ## Configuration
 
@@ -115,7 +178,9 @@ directory:
 - Windows: `%LOCALAPPDATA%\okta-cli\okta-cli\config.json`
 
 `OKTA_CLI_CONFIG` overrides the config file path entirely. `OKTA_URL` and `OKTA_TOKEN`, set
-together, bypass the config file and profile system altogether.
+together, bypass the config file and profile system altogether for an SSWS profile; the OAuth
+equivalent is `OKTA_URL` + `OKTA_CLIENT_ID` + (`OKTA_PRIVATE_KEY` or `OKTA_PRIVATE_KEY_FILE`) +
+`OKTA_SCOPES` (plus optional `OKTA_KID`/`OKTA_DPOP`) - see [Authentication](#authentication).
 
 ## CSV / Excel file formats
 

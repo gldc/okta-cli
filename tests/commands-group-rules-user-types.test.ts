@@ -21,6 +21,27 @@ test("spec paths", () => {
       expect(knownPath(`${s.path}/x/lifecycle/deactivate`), s.path).toBe(true);
     }
   }
+  // Documented in the pinned spec, but declared with no HTTP operations at all (get/put/
+  // post/delete all `never` in schema.d.ts) - so there is deliberately no `groups user-rules`
+  // command. See the "not a registered command" and CHANGES.rst guard tests below.
+  expect(knownPath("/groups/g1/users/u1/group-rules")).toBe(true);
+});
+
+// Guards CHANGES.rst/README: the pinned spec declares /groups/{groupId}/users/{userId}/
+// group-rules with no operations (get/put/post/delete all `never`), so there's deliberately
+// no `groups user-rules` command - the changelog must not advertise one.
+test("user-rules is not a registered command (no operations on the group-rules-by-user path in the pinned spec)", async () => {
+  srv = startServer([]);
+  const t = testCtx(srv.url);
+  expect(await runTest(["groups", "user-rules", "eng", "-u", "jdoe"], t.ctx)).not.toBe(0);
+  expect(srv.calls.length).toBe(0);
+});
+
+test("CHANGES.rst does not advertise the unimplemented `groups user-rules` command", async () => {
+  const changes = await Bun.file(`${import.meta.dir}/../CHANGES.rst`).text();
+  const line = changes.split("\n").find((l) => l.includes("policies mapping/mapping-delete"));
+  expect(line).toBeDefined();
+  expect(line).not.toContain("user-rules");
 });
 
 test("groupRuleBody with and without excluded users", () => {

@@ -21,7 +21,11 @@ test("spec paths", () => {
     `${AUTH_SERVERS.path}/x/policies/y/lifecycle/activate`, `${AUTH_SERVERS.path}/x/policies/y/lifecycle/deactivate`,
     `${AUTH_SERVERS.path}/x/policies/y/rules`, `${AUTH_SERVERS.path}/x/policies/y/rules/z`,
     `${AUTH_SERVERS.path}/x/clients`, `${AUTH_SERVERS.path}/x/clients/y/tokens`, `${AUTH_SERVERS.path}/x/clients/y/tokens/z`,
-    `${AUTH_SERVERS.path}/x/credentials/keys`, `${AUTH_SERVERS.path}/x/credentials/lifecycle/keyRotate`,
+    `${AUTH_SERVERS.path}/x/credentials/keys`, `${AUTH_SERVERS.path}/x/credentials/keys/z`, `${AUTH_SERVERS.path}/x/credentials/lifecycle/keyRotate`,
+    `${AUTH_SERVERS.path}/x/policies/y/rules/z/lifecycle/activate`, `${AUTH_SERVERS.path}/x/policies/y/rules/z/lifecycle/deactivate`,
+    `${AUTH_SERVERS.path}/x/associatedServers`, `${AUTH_SERVERS.path}/x/associatedServers/z`,
+    `${AUTH_SERVERS.path}/x/resourceservercredentials/keys`, `${AUTH_SERVERS.path}/x/resourceservercredentials/keys/z`,
+    `${AUTH_SERVERS.path}/x/resourceservercredentials/keys/z/lifecycle/activate`, `${AUTH_SERVERS.path}/x/resourceservercredentials/keys/z/lifecycle/deactivate`,
   ]) expect(knownPath(p), p).toBe(true);
 });
 
@@ -257,5 +261,75 @@ describe("auth-servers keys", () => {
     expect(srv.calls.at(-1)!.method).toBe("POST");
     expect(srv.calls.at(-1)!.path).toBe("/api/v1/authorizationServers/aus1/credentials/lifecycle/keyRotate");
     expect(srv.calls.at(-1)!.body).toEqual({ use: "sig" });
+  });
+
+  test("key retrieves a single signing key credential", async () => {
+    srv = startServer([serverByIdRoute, { method: "GET", path: "/api/v1/authorizationServers/aus1/credentials/keys/key1", body: { kid: "key1", status: "ACTIVE", use: "sig", alg: "RS256" } }]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["auth-servers", "key", "aus1", "key1", "-j"], t.ctx)).toBe(0);
+    expect(JSON.parse(t.out.at(-1)!).kid).toBe("key1");
+  });
+});
+
+describe("auth-servers rule-activate / rule-deactivate", () => {
+  test("posts to the rule's lifecycle path", async () => {
+    srv = startServer([
+      serverByIdRoute,
+      { method: "GET", path: "/api/v1/authorizationServers/aus1/policies/asp1", body: { id: "asp1", name: "Default Policy" } },
+      { method: "GET", path: "/api/v1/authorizationServers/aus1/policies/asp1/rules/r1", body: { id: "r1", name: "catch-all" } },
+      { method: "POST", path: /^\/api\/v1\/authorizationServers\/aus1\/policies\/asp1\/rules\/r1\/lifecycle\/(activate|deactivate)$/ },
+    ]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["auth-servers", "rule-activate", "aus1", "asp1", "r1"], t.ctx)).toBe(0);
+    expect(t.out.at(-1)).toBe("rule r1 (catch-all) activated\n");
+    expect(await runTest(["auth-servers", "rule-deactivate", "aus1", "asp1", "r1"], t.ctx)).toBe(0);
+    expect(t.out.at(-1)).toBe("rule r1 (catch-all) deactivated\n");
+  });
+});
+
+describe("auth-servers associated servers", () => {
+  test("associated/associated-add/associated-delete", async () => {
+    srv = startServer([
+      serverByIdRoute,
+      { method: "GET", path: "/api/v1/authorizationServers/aus2", body: { id: "aus2", name: "other" } },
+      { method: "GET", path: "/api/v1/authorizationServers/aus1/associatedServers", body: [{ id: "aus2", name: "other" }] },
+      { method: "POST", path: "/api/v1/authorizationServers/aus1/associatedServers", body: [{ id: "aus2", name: "other" }] },
+      { method: "DELETE", path: "/api/v1/authorizationServers/aus1/associatedServers/aus2" },
+    ]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["auth-servers", "associated", "aus1", "-j"], t.ctx)).toBe(0);
+    expect(JSON.parse(t.out.at(-1)!)[0].id).toBe("aus2");
+    expect(await runTest(["auth-servers", "associated-add", "aus1", "--server", "aus2", "-j"], t.ctx)).toBe(0);
+    expect(srv.calls.at(-1)!.body).toEqual({ trusted: ["aus2"] });
+    expect(await runTest(["auth-servers", "associated-delete", "aus1", "aus2"], t.ctx)).toBe(0);
+    expect(t.out.at(-1)).toBe("associated authorization server aus2 removed from authorization server aus1\n");
+  });
+});
+
+describe("auth-servers resource server keys", () => {
+  const resKey = { id: "apk1", kid: "apk1kid", status: "ACTIVE", kty: "RSA", created: "2026-01-01T00:00:00.000Z" };
+
+  test("resource-keys/resource-key/resource-key-add/resource-key-delete/activate/deactivate", async () => {
+    srv = startServer([
+      serverByIdRoute,
+      { method: "GET", path: "/api/v1/authorizationServers/aus1/resourceservercredentials/keys", body: [resKey] },
+      { method: "GET", path: "/api/v1/authorizationServers/aus1/resourceservercredentials/keys/apk1", body: resKey },
+      { method: "POST", path: "/api/v1/authorizationServers/aus1/resourceservercredentials/keys", body: resKey },
+      { method: "DELETE", path: "/api/v1/authorizationServers/aus1/resourceservercredentials/keys/apk1" },
+      { method: "POST", path: /^\/api\/v1\/authorizationServers\/aus1\/resourceservercredentials\/keys\/apk1\/lifecycle\/(activate|deactivate)$/, body: resKey },
+    ]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["auth-servers", "resource-keys", "aus1", "-j"], t.ctx)).toBe(0);
+    expect(JSON.parse(t.out.at(-1)!)[0].id).toBe("apk1");
+    expect(await runTest(["auth-servers", "resource-key", "aus1", "apk1", "-j"], t.ctx)).toBe(0);
+    expect(JSON.parse(t.out.at(-1)!)).toEqual(resKey);
+    expect(await runTest(["auth-servers", "resource-key-add", "aus1", "-s", "kty=RSA", "-j"], t.ctx)).toBe(0);
+    expect(srv.calls.find((c) => c.method === "POST" && c.path.endsWith("/resourceservercredentials/keys"))!.body).toEqual({ kty: "RSA" });
+    expect(await runTest(["auth-servers", "resource-key-delete", "aus1", "apk1"], t.ctx)).toBe(0);
+    expect(t.out.at(-1)).toBe("resource server key apk1 deleted from authorization server aus1\n");
+    expect(await runTest(["auth-servers", "resource-key-activate", "aus1", "apk1", "-j"], t.ctx)).toBe(0);
+    expect(JSON.parse(t.out.at(-1)!)).toEqual(resKey);
+    expect(await runTest(["auth-servers", "resource-key-deactivate", "aus1", "apk1", "-j"], t.ctx)).toBe(0);
+    expect(JSON.parse(t.out.at(-1)!)).toEqual(resKey);
   });
 });

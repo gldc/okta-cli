@@ -18,11 +18,15 @@ test("spec paths", () => {
     "/identity-sources/s1/sessions/sess1/bulk-groups-upsert", "/identity-sources/s1/sessions/sess1/bulk-groups-delete",
     "/identity-sources/s1/sessions/sess1/bulk-group-memberships-upsert", "/identity-sources/s1/sessions/sess1/bulk-group-memberships-delete",
     "/identity-sources/s1/users/ext1", "/identity-sources/s1/groups/g1", "/identity-sources/s1/groups/g1/membership",
+    "/identity-sources/s1/groups", "/identity-sources/s1/groups/g1/membership/ext1",
     UI_SCHEMAS.path, `${UI_SCHEMAS.path}/x`,
     "/first-party-app-settings/admin-console",
     "/directories/a1/groups/modify", "/directories/a1/groups/g1/query", "/directories/a1/groups/g1/query/r1",
   ]) expect(knownPath(p), p).toBe(true);
-  for (const p of ["/oauth2/v1/clients/c1/roles", "/oauth2/v1/clients/c1/roles/ra1", "/oauth2/v1/clients/c1/roles/ra1/targets/groups", "/oauth2/v1/clients/c1/roles/ra1/targets/groups/00g1"]) expect(knownPath(p), p).toBe(true);
+  for (const p of [
+    "/oauth2/v1/clients/c1/roles", "/oauth2/v1/clients/c1/roles/ra1", "/oauth2/v1/clients/c1/roles/ra1/targets/groups", "/oauth2/v1/clients/c1/roles/ra1/targets/groups/00g1",
+    "/oauth2/v1/clients/c1/roles/ra1/targets/catalog/apps", "/oauth2/v1/clients/c1/roles/ra1/targets/catalog/apps/salesforce", "/oauth2/v1/clients/c1/roles/ra1/targets/catalog/apps/salesforce/0oa1",
+  ]) expect(knownPath(p), p).toBe(true);
 });
 
 describe("agent-pools", () => {
@@ -139,6 +143,18 @@ describe("identity-sources", () => {
     expect(await runTest(["identity-sources", "group-members", "s1", "g1"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("ext1  \next2  \n");
   });
+
+  test("group-add posts the body; group-member-delete deletes a member", async () => {
+    srv = startServer([
+      { method: "POST", path: "/api/v1/identity-sources/s1/groups", body: { id: "00g1", externalId: "g1" } },
+      { method: "DELETE", path: "/api/v1/identity-sources/s1/groups/g1/membership/ext1" },
+    ]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["identity-sources", "group-add", "s1", "-s", "externalId=g1", "-j"], t.ctx)).toBe(0);
+    expect(srv.calls.at(-1)!.body).toEqual({ externalId: "g1" });
+    expect(await runTest(["identity-sources", "group-member-delete", "s1", "g1", "ext1"], t.ctx)).toBe(0);
+    expect(t.out.at(-1)).toBe("member ext1 removed from identity source s1 group g1\n");
+  });
 });
 
 describe("oauth-clients", () => {
@@ -148,8 +164,11 @@ describe("oauth-clients", () => {
       { method: "POST", path: "/oauth2/v1/clients/c1/roles", body: { id: "ra2", type: "READ_ONLY_ADMIN" } },
       { method: "DELETE", path: "/oauth2/v1/clients/c1/roles/ra1" },
       { method: "GET", path: "/oauth2/v1/clients/c1/roles/ra1/targets/groups", body: [{ id: "00g1", profile: { name: "Engineering" } }] },
+      { method: "GET", path: "/oauth2/v1/clients/c1/roles/ra1/targets/catalog/apps", body: [{ name: "salesforce", label: "Salesforce" }] },
       { method: "PUT", path: "/oauth2/v1/clients/c1/roles/ra1/targets/groups/00g1" },
       { method: "DELETE", path: "/oauth2/v1/clients/c1/roles/ra1/targets/groups/00g1" },
+      { method: "PUT", path: "/oauth2/v1/clients/c1/roles/ra1/targets/catalog/apps/salesforce" },
+      { method: "DELETE", path: "/oauth2/v1/clients/c1/roles/ra1/targets/catalog/apps/salesforce" },
       ...standardRoutes(),
     ]);
     const t = testCtx(srv.url);
@@ -159,12 +178,18 @@ describe("oauth-clients", () => {
     expect(srv.calls.at(-1)!.body).toEqual({ type: "READ_ONLY_ADMIN" });
     expect(await runTest(["oauth-clients", "unassign-role", "c1", "ra1"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("role assignment ra1 removed from OAuth 2.0 client c1\n");
-    expect(await runTest(["oauth-clients", "role-targets", "c1", "ra1", "--output-fields", "id,profile.name"], t.ctx)).toBe(0);
-    expect(t.out.at(-1)).toBe("00g1  Engineering  \n");
+    expect(await runTest(["oauth-clients", "role-targets", "c1", "ra1", "-j"], t.ctx)).toBe(0);
+    expect(JSON.parse(t.out.at(-1)!)).toEqual({ groups: [{ id: "00g1", profile: { name: "Engineering" } }], apps: [{ name: "salesforce", label: "Salesforce" }] });
     expect(await runTest(["oauth-clients", "role-target-add", "c1", "ra1", "-g", "00g1"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("group 00g1 (Engineering) added as a target of role assignment ra1 on client c1\n");
     expect(await runTest(["oauth-clients", "role-target-delete", "c1", "ra1", "-g", "00g1"], t.ctx)).toBe(0);
     expect(t.out.at(-1)).toBe("group 00g1 (Engineering) removed as a target of role assignment ra1 on client c1\n");
+    expect(await runTest(["oauth-clients", "role-target-add", "c1", "ra1", "--app-name", "salesforce"], t.ctx)).toBe(0);
+    expect(t.out.at(-1)).toBe("app salesforce added as a target of role assignment ra1 on client c1\n");
+    expect(await runTest(["oauth-clients", "role-target-delete", "c1", "ra1", "--app-name", "salesforce"], t.ctx)).toBe(0);
+    expect(t.out.at(-1)).toBe("app salesforce removed as a target of role assignment ra1 on client c1\n");
+    expect(await runTest(["oauth-clients", "role-target-add", "c1", "ra1"], t.ctx)).not.toBe(0);
+    expect(await runTest(["oauth-clients", "role-target-add", "c1", "ra1", "-g", "00g1", "--app-name", "salesforce"], t.ctx)).not.toBe(0);
   });
 });
 

@@ -10,6 +10,7 @@ const SUPPORT_FIELDS = "support,expiration";
 // Deviation from the plan: OktaSupportCase has no top-level `status`/`accessLevel`/`updated`
 // fields - only `caseNumber`, `subject`, and nested `impersonation`/`selfAssigned` statuses.
 const SUPPORT_CASE_FIELDS = "caseNumber,subject,impersonation.status,impersonation.expiration";
+const YUBIKEY_FIELDS = "id,status,created,lastUpdated,lastVerified";
 
 function enabledDisabledBody(opts: { enabled?: boolean; disabled?: boolean }, field: string): Record<string, boolean> {
   if (!opts.enabled && !opts.disabled) throw new ExitError("Provide --enabled or --disabled");
@@ -84,4 +85,22 @@ export function registerOrg(program: Command, ctx: Ctx): void {
 
   // Deviation from the plan: `/api/v1/orgs` has no GET in the spec (only POST to create a
   // child org), so there's no `children` list command.
+
+  // Deviation from the plan: no `--for-user` query parameter exists on this endpoint - use
+  // `--filter` with a `user.id eq "..."` expression instead. `--filter`'s schema type is a
+  // (codegen) enum of filterable field names, not a real expression; a plain string is used.
+  addOutputOptions(addVerbose(g.command("yubikeys").description("List YubiKey OTP tokens")
+    .option("--filter <expr>", 'filter expression, e.g. \'user.id eq "00u1"\'')
+    .option("--expand <what>", "embed the user resource when set to 'user'")
+    .addOption(new Option("--sort-by <field>", "sort field").choices(["profile.email", "profile.serial", "activated", "user.id", "created", "status", "lastVerified"]))
+    .addOption(new Option("--sort-order <order>", "sort order").choices(["ASC", "DESC"]))), YUBIKEY_FIELDS)
+    .action(action(ctx, (client, opts) => client.getAll("/org/factors/yubikey_token/tokens", { query: { filter: opts.filter, expand: opts.expand, sortBy: opts.sortBy, sortOrder: opts.sortOrder } })));
+
+  addOutputOptions(addVerbose(g.command("yubikey").description("Retrieve a YubiKey OTP token").argument("<tokenId>")), YUBIKEY_FIELDS)
+    .action(action(ctx, (client, _o, tokenId) => client.get(`/org/factors/yubikey_token/tokens/${tokenId}`)));
+
+  // Deviation from the plan: uploadYubikeyOtpTokenSeed's request body is a single JSON seed
+  // (serialNumber/publicId/privateId/aesKey), not a multipart CSV file upload - use -b/-s.
+  addOutputOptions(addVerbose(bodyOpts(g.command("yubikeys-upload").description("Upload a YubiKey OTP seed"))), YUBIKEY_FIELDS)
+    .action(action(ctx, (client, opts) => client.json("POST", "/org/factors/yubikey_token/tokens", { body: bodyFromOpts(opts) })));
 }

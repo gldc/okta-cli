@@ -233,6 +233,9 @@ export function registerUsers(program: Command, ctx: Ctx): Command {
   addOutputOptions(addVerbose(lookupFieldOpt(g.command("subscriptions").description("List a user's notification subscriptions").argument("<user>"))), SUBSCRIPTION_FIELDS)
     .action(action(ctx, async (client, opts, user) => client.getAll(`/users/${(await getUser(client, user, opts.userLookupField)).id}/subscriptions`)));
 
+  addOutputOptions(addVerbose(lookupFieldOpt(g.command("subscription").description("Retrieve a user's notification subscription").argument("<user>").argument("<notificationType>"))), SUBSCRIPTION_FIELDS)
+    .action(action(ctx, async (client, opts, user, notificationType) => client.get(`/users/${(await getUser(client, user, opts.userLookupField)).id}/subscriptions/${notificationType}`)));
+
   for (const [verb, prep] of [["subscribe", "to"], ["unsubscribe", "from"]] as const) {
     addVerbose(lookupFieldOpt(g.command(verb).description(`${verb[0]!.toUpperCase()}${verb.slice(1)} a user from a notification type`).argument("<user>").argument("<notificationType>")))
       .action(action(ctx, async (client, opts, user, notificationType) => {

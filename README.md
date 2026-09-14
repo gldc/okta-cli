@@ -94,6 +94,14 @@ $ okta-cli agent-pools list                           # list on-prem agent pools
 $ okta-cli pam service-accounts list                  # list privileged access service accounts
 $ okta-cli oin api-services                           # list OIN API service integration instances
 
+# new in 19.3.0
+$ okta-cli apps secrets my-oidc-app                   # list an OIDC app's client secrets
+$ okta-cli users factor-enroll my-login \             # enroll an SMS factor for a user
+           -s factorType=sms -s provider=OKTA \
+           -s profile.phoneNumber=+15555550100
+$ okta-cli users role-targets my-login <assignmentId> # list a role assignment's group/app targets
+$ okta-cli idps signing-keys my-idp                   # list an IdP's signing key credentials
+
 $ okta-cli version                                    # print version and exit
 ```
 
@@ -204,6 +212,8 @@ have done):
   argument.
 - `config current-context` prints `No profile set.` instead of silently printing nothing.
 - `groups list -a` is a flag (`--all`) instead of erroring because it expected a value.
+- `pw set -g`'s generated passwords now include an uppercase first letter and a trailing digit
+  so they satisfy Okta's default password policy (18.1.2 generated all-lowercase words).
 
 Other intentional deviations, all judgment calls where 18.1.2's behavior wasn't worth
 matching exactly:
@@ -228,8 +238,9 @@ matching exactly:
 - `-f`/`--user-lookup-field` values other than `login` still probe `GET /users/{value}`
   first before falling back to a profile-field search, same as 18.1.2.
 
-As of 19.2.0, the CLI covers every path family of the pinned spec that has documented
-operations, except end-user-facing flows.
+As of 19.3.0, the CLI covers every path family of the pinned spec that has documented
+operations, except end-user-facing flows and group-rules-by-user
+(`/groups/{groupId}/users/{userId}/group-rules`, declared in the spec with no operations).
 
 ## References
 

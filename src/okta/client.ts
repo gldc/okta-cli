@@ -111,9 +111,10 @@ export class OktaClient {
   async request(method: Method, path: string, opts: RequestOptions = {}): Promise<Response> {
     const url = this.buildUrl(path, opts.query, opts.basePath);
     const init: RequestInit = { method, headers: opts.headers ? { ...this.headers, ...opts.headers } : this.headers };
-    // A string body (e.g. a raw SET JWT for security-events send) is sent as-is rather than
-    // JSON-encoded - every other caller's body is an object/array from parseBody/bodyFromOpts.
-    if (opts.body !== undefined && method !== "GET") init.body = typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
+    // A string body (e.g. a raw SET JWT for security-events send) or raw bytes (e.g. a
+    // certificate file for csr-publish) is sent as-is rather than JSON-encoded - every
+    // other caller's body is an object/array from parseBody/bodyFromOpts.
+    if (opts.body !== undefined && method !== "GET") init.body = (typeof opts.body === "string" || opts.body instanceof Uint8Array ? opts.body : JSON.stringify(opts.body)) as BodyInit;
     return this.send(method, url, init);
   }
 
@@ -132,13 +133,20 @@ export class OktaClient {
     return stripLinks(JSON.parse(text));
   }
 
+  // Shared JSON-response parsing (empty-body guard + stripLinks) - used by json() and by
+  // publishCsr (resource.ts), which sends a raw byte body via request() directly but still
+  // wants the response parsed the same way as every other JSON-returning call.
+  async parseJson<T>(rsp: Response): Promise<T> {
+    const text = await rsp.text();
+    if (rsp.status === 204 || text.length === 0) return undefined as T;
+    return stripLinks(JSON.parse(text)) as T;
+  }
+
   json(method: Method, path: string, opts?: RequestOptions): Promise<any>;
   json<T>(method: Method, path: string, opts?: RequestOptions): Promise<T>;
   async json<T>(method: Method, path: string, opts: RequestOptions = {}): Promise<T> {
     const rsp = await this.request(method, path, opts);
-    const text = await rsp.text();
-    if (rsp.status === 204 || text.length === 0) return undefined as T;
-    return stripLinks(JSON.parse(text)) as T;
+    return this.parseJson<T>(rsp);
   }
 
   get(path: string, query?: Query): Promise<any>;

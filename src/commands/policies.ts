@@ -82,6 +82,16 @@ export function registerPolicies(program: Command, ctx: Ctx): Command {
   addOutputOptions(addVerbose(g.command("mappings").description("List a policy's resource mappings").argument("<policy>")), "id,resourceType,resourceId")
     .action(action(ctx, async (client, _opts, policyArg) => client.getAll(`/policies/${(await resourceGet(client, POLICIES, policyArg)).id}/mappings`)));
 
+  addOutputOptions(addVerbose(g.command("mapping").description("Retrieve a policy resource mapping").argument("<policy>").argument("<mappingId>")), "id,resourceType,resourceId")
+    .action(action(ctx, async (client, _o, policyArg, mappingId) => client.get(`/policies/${(await resourceGet(client, POLICIES, policyArg)).id}/mappings/${mappingId}`)));
+
+  addVerbose(g.command("mapping-delete").description("Delete a policy resource mapping").argument("<policy>").argument("<mappingId>"))
+    .action(action(ctx, async (client, _o, policyArg, mappingId) => {
+      const policy = await resourceGet(client, POLICIES, policyArg);
+      await client.json("DELETE", `/policies/${policy.id}/mappings/${mappingId}`);
+      return `mapping ${mappingId} deleted from policy ${policy.id}`;
+    }));
+
   addOutputOptions(addVerbose(g.command("map").description("Map a policy to a resource").argument("<policy>")
     .addOption(new Option("--resource-type <type>", "resource type").choices(["APP", "USER_TYPE", "GROUP"]).makeOptionMandatory())
     .requiredOption("--resource-id <id>", "resource id")), "id,resourceType,resourceId")

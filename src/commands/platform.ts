@@ -14,6 +14,7 @@ export const DOMAINS: ResourceSpec = { name: "domains", description: "Custom dom
 export const ZONES: ResourceSpec = { name: "zones", description: "Network zones", path: "/zones", singular: "network zone", nameField: "name", defaultFields: "id,status,type,usage,name", lifecycle: true };
 export const LOG_STREAMS: ResourceSpec = { name: "log-streams", description: "Log streams", path: "/logStreams", singular: "log stream", nameField: "name", defaultFields: "id,status,type,name", lifecycle: true,
   listOptions: [{ flags: "-t, --type <type>", param: "filter", description: "log stream type (aws_eventbridge, splunk_cloud_logstreaming)", transform: (v) => `type eq "${v}"` }] };
+const LOG_STREAM_SCHEMA_FIELDS = "id,title,type";
 
 export function registerPlatform(program: Command, ctx: Ctx): void {
   const to = defineResource(program, ctx, TRUSTED_ORIGINS);
@@ -32,6 +33,24 @@ export function registerPlatform(program: Command, ctx: Ctx): void {
   addOutputOptions(addVerbose(dm.command("verify").description("Trigger DNS verification of a custom domain").argument("<domain-or-id>")), DOMAINS.defaultFields)
     .action(action(ctx, async (client, _o, d) => client.json("POST", `/domains/${(await resourceGet(client, DOMAINS, d)).id}/verify`)));
 
+  addVerbose(dm.command("certificate").description("Upsert the certificate for a custom domain").argument("<domain-or-id>")
+    .requiredOption("--cert <path>", "path to the PEM certificate").requiredOption("--key <path>", "path to the PEM private key")
+    .option("--chain <path>", "path to the PEM certificate chain"))
+    .action(action(ctx, async (client, opts, d) => {
+      const domain = await resourceGet(client, DOMAINS, d);
+      const [certificate, privateKey, certificateChain] = await Promise.all([
+        Bun.file(opts.cert).text(), Bun.file(opts.key).text(), opts.chain ? Bun.file(opts.chain).text() : Promise.resolve(undefined),
+      ]);
+      await client.json("PUT", `/domains/${domain.id}/certificate`, { body: { type: "PEM", certificate, privateKey, certificateChain } });
+      return `certificate updated for domain ${domain.id} (${domain.domain})`;
+    }));
+
   defineResource(program, ctx, ZONES);
-  defineResource(program, ctx, LOG_STREAMS);
+  const ls = defineResource(program, ctx, LOG_STREAMS);
+
+  addOutputOptions(addVerbose(ls.command("schemas").description("List the log stream schemas")), LOG_STREAM_SCHEMA_FIELDS)
+    .action(action(ctx, (client) => client.get("/meta/schemas/logStream")));
+
+  addOutputOptions(addVerbose(ls.command("schema").description("Retrieve the schema for a log stream type").argument("<type>")), LOG_STREAM_SCHEMA_FIELDS)
+    .action(action(ctx, (client, _o, type) => client.get(`/meta/schemas/logStream/${type}`)));
 }

@@ -57,13 +57,50 @@ describe("defineResource", () => {
     expect(srv.calls.at(-1)!.body).toEqual({ type: "IP", name: "New" });
     await run(["test-zones", "replace", "z2", "-s", "name=Renamed"], t);
     expect(srv.calls.at(-1)!.method).toBe("PUT");
-    expect(srv.calls.at(-1)!.body).toEqual({ ...zones[0], name: "Renamed" });
+    expect(srv.calls.at(-1)!.path).toBe("/api/v1/zones/z2"); // URL still keys off existing's id
+    // `id` (a read-only field) is stripped from the merge base - the URL, not the body, carries it.
+    expect(srv.calls.at(-1)!.body).toEqual({ status: "ACTIVE", type: "IP", name: "Renamed" });
     await run(["test-zones", "delete", "office"], t);
     expect(t.out.at(-1)).toBe("network zone z2 (Office) deleted\n");
     await run(["test-zones", "activate", "z2", "--output-fields", "id"], t);
     expect(t.out.at(-1)).toBe("z2  \n");
     await run(["test-zones", "deactivate", "z2"], t);
     expect(t.out.at(-1)).toBe("network zone z2 (Office) deactivated\n");
+  });
+
+  test("replace strips default read-only fields plus spec.replaceOmit from the merge base (never mutates existing)", async () => {
+    const roSpec: ResourceSpec = { name: "ro-things", description: "d", path: "/ro-things", singular: "ro thing", nameField: "name", defaultFields: "id,name", replaceOmit: ["secret"] };
+    const roItem = { id: "r1", name: "Thing", secret: "s3cr3t", created: "2020", lastUpdated: "2021", createdBy: "u1", lastUpdatedBy: "u2", _links: { self: {} }, _embedded: { x: 1 } };
+    const roItemCopy = { ...roItem };
+    srv = startServer([
+      { method: "GET", path: "/api/v1/ro-things/r1", body: roItem },
+      { method: "PUT", path: "/api/v1/ro-things/r1", body: { name: "Renamed" } },
+    ]);
+    const t = testCtx(srv.url);
+    const p = buildProgram(t.ctx);
+    defineResource(p, t.ctx, roSpec);
+    try { await p.parseAsync(["ro-things", "replace", "r1", "-s", "name=Renamed"], { from: "user" }); } catch (e) { if (!(e instanceof ExitSentinel)) throw e; }
+    expect(srv.calls.at(-1)!.path).toBe("/api/v1/ro-things/r1"); // URL still keys off existing's id
+    const body = srv.calls.at(-1)!.body;
+    for (const f of ["id", "created", "lastUpdated", "createdBy", "lastUpdatedBy", "_links", "_embedded", "secret"]) expect(body).not.toHaveProperty(f);
+    expect(body).toEqual({ name: "Renamed" });
+    expect(roItem).toEqual(roItemCopy); // existing was never mutated
+  });
+
+  test("beforeReplace hook can adjust the body right before the PUT", async () => {
+    const hookSpec: ResourceSpec = {
+      name: "ro-things2", description: "d", path: "/ro-things2", singular: "ro thing", nameField: "name", defaultFields: "id,name",
+      beforeReplace: async (_client, existing, body) => ({ ...body, stampedFrom: existing.id }),
+    };
+    srv = startServer([
+      { method: "GET", path: "/api/v1/ro-things2/r1", body: { id: "r1", name: "Thing" } },
+      { method: "PUT", path: "/api/v1/ro-things2/r1", body: { name: "Renamed", stampedFrom: "r1" } },
+    ]);
+    const t = testCtx(srv.url);
+    const p = buildProgram(t.ctx);
+    defineResource(p, t.ctx, hookSpec);
+    try { await p.parseAsync(["ro-things2", "replace", "r1", "-s", "name=Renamed"], { from: "user" }); } catch (e) { if (!(e instanceof ExitSentinel)) throw e; }
+    expect(srv.calls.at(-1)!.body).toEqual({ name: "Renamed", stampedFrom: "r1" });
   });
 
   test("get by id: 502 surfaces COMMUNICATION_ERROR instead of falling back to list search", async () => {

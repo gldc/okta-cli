@@ -15,6 +15,7 @@ test("spec paths", () => {
   for (const p of [
     DEVICES.path, `${DEVICES.path}/x`, `${DEVICES.path}/x/lifecycle/activate`, `${DEVICES.path}/x/lifecycle/deactivate`,
     `${DEVICES.path}/x/lifecycle/suspend`, `${DEVICES.path}/x/lifecycle/unsuspend`, `${DEVICES.path}/x/users`,
+    `${DEVICES.path}/x/os-accounts`, `${DEVICES.path}/x/os-accounts/y`,
     DEVICE_ASSURANCES.path, `${DEVICE_ASSURANCES.path}/x`,
     "/users/x/devices",
   ]) expect(knownPath(p), p).toBe(true);
@@ -68,6 +69,22 @@ describe("devices users", () => {
     await runTest(["devices", "users", "guo1", "-j"], t.ctx);
     expect(srv.calls.at(-1)!.path).toBe("/api/v1/devices/guo1/users");
     expect(JSON.parse(t.out.join(""))[0].user.id).toBe("00u1");
+  });
+});
+
+describe("devices os-accounts", () => {
+  test("os-accounts lists; os-account retrieves one", async () => {
+    const osAccount = { id: "dao1", platform: "MACOS", resourceDisplayName: { value: "bob-mbp", sensitive: false }, lastSeenAt: "2026-01-01T00:00:00.000Z", created: "2025-01-01T00:00:00.000Z" };
+    srv = startServer([
+      deviceByIdRoute,
+      { method: "GET", path: "/api/v1/devices/guo1/os-accounts", body: [osAccount] },
+      { method: "GET", path: "/api/v1/devices/guo1/os-accounts/dao1", body: osAccount },
+    ]);
+    const t = testCtx(srv.url);
+    await runTest(["devices", "os-accounts", "guo1"], t.ctx);
+    expect(t.out.at(-1)).toBe("dao1  MACOS  bob-mbp  2026-01-01T00:00:00.000Z  2025-01-01T00:00:00.000Z  \n");
+    await runTest(["devices", "os-account", "guo1", "dao1", "-j"], t.ctx);
+    expect(JSON.parse(t.out.at(-1)!)).toEqual(osAccount);
   });
 });
 

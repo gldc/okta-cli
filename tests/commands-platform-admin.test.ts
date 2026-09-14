@@ -15,6 +15,7 @@ test("paths exist in spec", () => {
     "/org/privacy/aerial", "/org/privacy/aerial/grant", "/org/privacy/aerial/revoke",
     "/org/privacy/oktaSupport/cases", "/org/privacy/oktaSupport/cases/1", "/org/email/bounces/remove-list",
     "/org/settings/autoAssignAdminAppSetting", "/org/settings/clientPrivilegesSetting",
+    "/org/factors/yubikey_token/tokens", "/org/factors/yubikey_token/tokens/tok1",
   ]) expect(knownPath(p), p).toBe(true);
 });
 
@@ -171,5 +172,22 @@ describe("org", () => {
     const line = changes.split("\n").find((l) => l.includes("admin-app-assignment/client-privileges"));
     expect(line).toBeDefined();
     expect(line).not.toContain("children");
+  });
+
+  test("yubikeys/yubikey/yubikeys-upload", async () => {
+    const tok = { id: "ykt1", status: "ACTIVE", created: "2026-01-01T00:00:00.000Z", lastUpdated: "2026-01-01T00:00:00.000Z", lastVerified: "2026-01-01T00:00:00.000Z" };
+    srv = startServer([
+      { method: "GET", path: "/api/v1/org/factors/yubikey_token/tokens", body: [tok] },
+      { method: "GET", path: "/api/v1/org/factors/yubikey_token/tokens/ykt1", body: tok },
+      { method: "POST", path: "/api/v1/org/factors/yubikey_token/tokens", body: tok },
+    ]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["org", "yubikeys", "--sort-by", "created", "--sort-order", "DESC", "-j"], t.ctx)).toBe(0);
+    expect(srv.calls.at(-1)!.query).toEqual({ sortBy: "created", sortOrder: "DESC" });
+    expect(JSON.parse(t.out.at(-1)!)[0].id).toBe("ykt1");
+    expect(await runTest(["org", "yubikey", "ykt1", "-j"], t.ctx)).toBe(0);
+    expect(JSON.parse(t.out.at(-1)!)).toEqual(tok);
+    expect(await runTest(["org", "yubikeys-upload", "-s", "serialNumber=123", "-s", "publicId=pub", "-j"], t.ctx)).toBe(0);
+    expect(srv.calls.at(-1)!.body).toEqual({ serialNumber: "123", publicId: "pub" });
   });
 });

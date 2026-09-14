@@ -4,7 +4,10 @@ import { action, addOutputOptions, addVerbose, bodyFromOpts, bodyOpts } from "..
 import { deepMerge, isPlainObject } from "../lib/dotted";
 import type { OktaClient } from "../okta/client";
 import { ExitError } from "../okta/errors";
-import { defineResource, resourceGet, type ResourceSpec } from "./resource";
+import { defineResource, omitFields, resourceGet, type ResourceSpec } from "./resource";
+
+// Read-only fields the GET theme representation carries that UpdateThemeRequest doesn't accept.
+const THEME_REPLACE_OMIT = ["id", "logo", "favicon", "backgroundImage", "_links"];
 
 const DOMAIN_FIELDS = "id,domain,validationStatus,certificateSourceType";
 const THEME_FIELDS = "id,primaryColorHex,secondaryColorHex,signInPageTouchPointVariant,endUserDashboardTouchPointVariant";
@@ -55,7 +58,7 @@ export function registerBrands(program: Command, ctx: Ctx): Command {
       const path = `/brands/${brand.id}/themes/${themeId}`;
       const existing = await client.get(path);
       let body = bodyFromOpts(opts);
-      if (!opts.body && isPlainObject(body)) body = deepMerge(existing, body);
+      if (!opts.body && isPlainObject(body)) body = deepMerge(omitFields(existing, THEME_REPLACE_OMIT), body);
       return client.json("PUT", path, { body });
     }));
 

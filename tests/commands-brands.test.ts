@@ -79,12 +79,15 @@ describe("brands themes", () => {
     expect(JSON.parse(t.out.join("")).primaryColorHex).toBe("#123456");
   });
 
-  test("theme-update with only -s fetches and merges", async () => {
-    srv = startServer([brandByIdRoute, { method: "GET", path: "/api/v1/brands/b1/themes/t1", body: theme }, { method: "PUT", path: "/api/v1/brands/b1/themes/t1", body: { ...theme, primaryColorHex: "#abcdef" } }]);
+  test("theme-update with only -s fetches and merges, stripping read-only fields Okta's UpdateThemeRequest rejects", async () => {
+    const existing = { ...theme, logo: { href: "https://x/logo.png" }, favicon: { href: "https://x/favicon.ico" }, backgroundImage: { href: "https://x/bg.png" }, _links: { self: { href: "https://x" } } };
+    srv = startServer([brandByIdRoute, { method: "GET", path: "/api/v1/brands/b1/themes/t1", body: existing }, { method: "PUT", path: "/api/v1/brands/b1/themes/t1", body: { ...theme, primaryColorHex: "#abcdef" } }]);
     const t = testCtx(srv.url);
     expect(await runTest(["brands", "theme-update", "b1", "t1", "-s", "primaryColorHex=#abcdef"], t.ctx)).toBe(0);
     expect(srv.calls.at(-1)!.method).toBe("PUT");
-    expect(srv.calls.at(-1)!.body).toEqual({ ...theme, primaryColorHex: "#abcdef" });
+    const body = srv.calls.at(-1)!.body;
+    for (const f of ["id", "logo", "favicon", "backgroundImage", "_links"]) expect(body).not.toHaveProperty(f);
+    expect(body).toEqual({ primaryColorHex: "#abcdef", secondaryColorHex: theme.secondaryColorHex, signInPageTouchPointVariant: theme.signInPageTouchPointVariant, endUserDashboardTouchPointVariant: theme.endUserDashboardTouchPointVariant });
   });
 
   test("theme-logo requires exactly one of --file/--delete", async () => {

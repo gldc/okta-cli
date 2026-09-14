@@ -1,9 +1,8 @@
 import { Option, type Command } from "commander";
 import type { Ctx } from "../cli/context";
 import { action, addOutputOptions, addVerbose, bodyFromOpts, bodyOpts, subgroup } from "../cli/options";
-import { getGroup } from "../lib/lookup";
 import { defineResource, type ResourceSpec } from "./resource";
-import { roleAssignmentBody, ROLE_TYPES } from "./roles";
+import { addRoleTarget, deleteRoleTarget, roleAssignmentBody, roleTargetGroupsAndApps, ROLE_TYPES, type RoleTargetOpts } from "./roles";
 
 const AGENT_POOL_FIELDS = "id,name,type,agentCount";
 // Deviation from the plan: AgentPoolUpdate has no top-level `scheduled` field (only a nested
@@ -15,7 +14,6 @@ const IDENTITY_SOURCE_USER_FIELDS = "externalId,profile.userName,profile.email";
 // `profile.profile` (not `profile`).
 const IDENTITY_SOURCE_GROUP_FIELDS = "externalId,id,profile.profile.displayName";
 const CLIENT_ROLE_FIELDS = "id,type,label,status,assignmentType";
-const CLIENT_ROLE_TARGET_FIELDS = "id,profile.name";
 const OAUTH2_BASE = "/oauth2/v1";
 
 export const UI_SCHEMAS: ResourceSpec = {
@@ -123,6 +121,15 @@ function registerIdentitySources(program: Command, ctx: Ctx): void {
       const rv = await client.get(`/identity-sources/${source}/groups/${groupOrExternalId}/membership`);
       return (rv.memberExternalIds ?? []).map((memberExternalId: string) => ({ memberExternalId }));
     }));
+
+  addOutputOptions(addVerbose(bodyOpts(is.command("group-add").description("Create a group in an identity source").argument("<source>"))), IDENTITY_SOURCE_GROUP_FIELDS)
+    .action(action(ctx, (client, opts, source) => client.json("POST", `/identity-sources/${source}/groups`, { body: bodyFromOpts(opts) })));
+
+  addVerbose(is.command("group-member-delete").description("Delete a member from an identity source group's membership").argument("<source>").argument("<groupOrExternalId>").argument("<memberExternalId>"))
+    .action(action(ctx, async (client, _o, source, groupOrExternalId, memberExternalId) => {
+      await client.json("DELETE", `/identity-sources/${source}/groups/${groupOrExternalId}/membership/${memberExternalId}`);
+      return `member ${memberExternalId} removed from identity source ${source} group ${groupOrExternalId}`;
+    }));
 }
 
 function registerOauthClients(program: Command, ctx: Ctx): void {
@@ -142,21 +149,23 @@ function registerOauthClients(program: Command, ctx: Ctx): void {
       return `role assignment ${assignmentId} removed from OAuth 2.0 client ${clientId}`;
     }));
 
-  addOutputOptions(addVerbose(oc.command("role-targets").description("List the group targets of an OAuth 2.0 client's role assignment").argument("<clientId>").argument("<assignmentId>")), CLIENT_ROLE_TARGET_FIELDS)
-    .action(action(ctx, (client, _o, clientId, assignmentId) => client.getAll(`/clients/${clientId}/roles/${assignmentId}/targets/groups`, { basePath: OAUTH2_BASE })));
+  addOutputOptions(addVerbose(oc.command("role-targets").description("List the group and app targets of an OAuth 2.0 client's role assignment").argument("<clientId>").argument("<assignmentId>")), null)
+    .action(action(ctx, (client, _o, clientId, assignmentId) => roleTargetGroupsAndApps(client, `/clients/${clientId}/roles/${assignmentId}`, { basePath: OAUTH2_BASE })));
 
-  addVerbose(oc.command("role-target-add").description("Add a group target to an OAuth 2.0 client's role assignment").argument("<clientId>").argument("<assignmentId>").requiredOption("-g, --group <group>", "group id or unique name"))
+  const clientTargetOpts = (cmd: Command) => cmd.option("-g, --group <group>", "group id or unique name")
+    .option("--app-name <name>", "OIN catalog app key name (APP_ADMIN roles)")
+    .option("--app-id <appId>", "app instance id (with --app-name)");
+
+  addVerbose(clientTargetOpts(oc.command("role-target-add").description("Add a group or app target to an OAuth 2.0 client's role assignment").argument("<clientId>").argument("<assignmentId>")))
     .action(action(ctx, async (client, opts, clientId, assignmentId) => {
-      const group = await getGroup(client, opts.group);
-      await client.json("PUT", `/clients/${clientId}/roles/${assignmentId}/targets/groups/${group.id}`, { basePath: OAUTH2_BASE });
-      return `group ${group.id} (${group.profile.name}) added as a target of role assignment ${assignmentId} on client ${clientId}`;
+      const label = await addRoleTarget(client, `/clients/${clientId}/roles/${assignmentId}`, opts as RoleTargetOpts, { basePath: OAUTH2_BASE });
+      return `${label} added as a target of role assignment ${assignmentId} on client ${clientId}`;
     }));
 
-  addVerbose(oc.command("role-target-delete").description("Remove a group target from an OAuth 2.0 client's role assignment").argument("<clientId>").argument("<assignmentId>").requiredOption("-g, --group <group>", "group id or unique name"))
+  addVerbose(clientTargetOpts(oc.command("role-target-delete").description("Remove a group or app target from an OAuth 2.0 client's role assignment").argument("<clientId>").argument("<assignmentId>")))
     .action(action(ctx, async (client, opts, clientId, assignmentId) => {
-      const group = await getGroup(client, opts.group);
-      await client.json("DELETE", `/clients/${clientId}/roles/${assignmentId}/targets/groups/${group.id}`, { basePath: OAUTH2_BASE });
-      return `group ${group.id} (${group.profile.name}) removed as a target of role assignment ${assignmentId} on client ${clientId}`;
+      const label = await deleteRoleTarget(client, `/clients/${clientId}/roles/${assignmentId}`, opts as RoleTargetOpts, { basePath: OAUTH2_BASE });
+      return `${label} removed as a target of role assignment ${assignmentId} on client ${clientId}`;
     }));
 }
 

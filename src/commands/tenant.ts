@@ -22,6 +22,9 @@ export const MAPPINGS: ResourceSpec = {
 export const EMAIL_DOMAINS: ResourceSpec = {
   name: "email-domains", description: "Custom email sender domains", path: "/email-domains", singular: "email domain",
   nameField: "domain", defaultFields: "id,domain,displayName,userName,validationStatus",
+  // Okta's replace (UpdateEmailDomain/BaseEmailDomain schema) accepts only displayName/userName;
+  // these are DNS-verification-derived read-only fields that the GET representation carries.
+  replaceOmit: ["dnsValidationRecords", "domain", "validationStatus", "validationSubdomain"],
 };
 
 export const BEHAVIORS: ResourceSpec = {
@@ -46,9 +49,25 @@ export const REALM_ASSIGNMENTS: ResourceSpec = {
   nameField: "name", defaultFields: "id,status,priority,name,isDefault", lifecycle: true, sortBy: "priority",
 };
 
+// `secretKey` is write-only - Okta never returns it, so a -s/-S merge with the GET
+// representation can only produce a body without it (unless the caller passes -s secretKey=...).
+async function requireCaptchaSecretKey(_client: OktaClient, _existing: any, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (!body.secretKey) throw new ExitError("captchas replace needs -s secretKey=<key> (Okta never returns it)");
+  return body;
+}
+
 export const CAPTCHAS: ResourceSpec = {
   name: "captchas", description: "CAPTCHA instances", path: "/captchas", singular: "CAPTCHA instance",
   nameField: "name", defaultFields: "id,name,type,siteKey",
+  beforeReplace: requireCaptchaSecretKey,
+};
+
+// Deviation from the plan: CustomTelephonyProviderCredentialResponse has no `name` field
+// (only `id`), so `nameField` is `id`. Updates are PATCH, not PUT, so `replaceable: false`
+// and a custom `update` command below.
+export const TELEPHONY_PROVIDERS: ResourceSpec = {
+  name: "telephony-providers", description: "Custom telephony providers", path: "/telephony-providers", singular: "custom telephony provider",
+  nameField: "id", defaultFields: "id,providerName,providerCapability,enabled,isPrimaryProvider", lifecycle: true, replaceable: false,
 };
 
 export function registerTenant(program: Command, ctx: Ctx): void {
@@ -81,6 +100,25 @@ export function registerTenant(program: Command, ctx: Ctx): void {
   defineResource(program, ctx, REALMS);
   defineResource(program, ctx, REALM_ASSIGNMENTS);
   defineResource(program, ctx, CAPTCHAS);
+
+  const tp = defineResource(program, ctx, TELEPHONY_PROVIDERS);
+  addOutputOptions(addVerbose(bodyOpts(tp.command("update").description("Update (PATCH) a custom telephony provider's credentials").argument("<provider>"))), TELEPHONY_PROVIDERS.defaultFields)
+    .action(action(ctx, async (client, opts, providerArg) => {
+      const provider = await resourceGet(client, TELEPHONY_PROVIDERS, providerArg);
+      return client.json("PATCH", `/telephony-providers/${provider.id}`, { body: bodyFromOpts(opts) });
+    }));
+  addOutputOptions(addVerbose(tp.command("set-primary").description("Set a custom telephony provider as the primary provider").argument("<provider>")), TELEPHONY_PROVIDERS.defaultFields)
+    .action(action(ctx, async (client, _o, providerArg) => {
+      const provider = await resourceGet(client, TELEPHONY_PROVIDERS, providerArg);
+      const rv = await client.json("POST", `/telephony-providers/${provider.id}/setAsPrimary`);
+      return rv ?? `custom telephony provider ${provider.id} set as primary`;
+    }));
+  addVerbose(bodyOpts(tp.command("test").description("Send a test message from a custom telephony provider").argument("<provider>")))
+    .action(action(ctx, async (client, opts, providerArg) => {
+      const provider = await resourceGet(client, TELEPHONY_PROVIDERS, providerArg);
+      await client.json("POST", `/telephony-providers/${provider.id}/test`, { body: bodyFromOpts(opts) });
+      return `test message sent from custom telephony provider ${provider.id}`;
+    }));
 
   const rl = subgroup(program, "rate-limits", "Rate limit settings and principal overrides");
 

@@ -5,6 +5,7 @@ import { getUser } from "../lib/lookup";
 import { defineResource, resourceGet, type ResourceSpec } from "./resource";
 
 const DEVICE_USERS_FIELDS = "user.id,user.profile.login,managementStatus,screenLockType,created";
+const OS_ACCOUNT_FIELDS = "id,platform,resourceDisplayName.value,lastSeenAt,created";
 // Deviation from the plan: UserDevice (the response schema for this endpoint) has no
 // `managementStatus` field — that only exists on DeviceUser (`/devices/{id}/users`, the
 // reverse lookup below). Dropped it here rather than printing an always-empty column.
@@ -41,6 +42,12 @@ export function registerDevices(program: Command, ctx: Ctx, usersCmd: Command): 
 
   addOutputOptions(addVerbose(d.command("users").description("List the users associated with a device").argument("<device>")), DEVICE_USERS_FIELDS)
     .action(action(ctx, async (client, _o, deviceArg) => client.getAll(`/devices/${(await resourceGet(client, DEVICES, deviceArg)).id}/users`)));
+
+  addOutputOptions(addVerbose(d.command("os-accounts").description("List a device's OS accounts").argument("<device>")), OS_ACCOUNT_FIELDS)
+    .action(action(ctx, async (client, _o, deviceArg) => client.getAll(`/devices/${(await resourceGet(client, DEVICES, deviceArg)).id}/os-accounts`)));
+
+  addOutputOptions(addVerbose(d.command("os-account").description("Retrieve a device's OS account").argument("<device>").argument("<id>")), OS_ACCOUNT_FIELDS)
+    .action(action(ctx, async (client, _o, deviceArg, id) => client.get(`/devices/${(await resourceGet(client, DEVICES, deviceArg)).id}/os-accounts/${id}`)));
 
   defineResource(program, ctx, DEVICE_ASSURANCES);
 

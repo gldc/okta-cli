@@ -17,6 +17,7 @@ import { registerGovernanceCollections } from "../commands/governance-collection
 import { registerGovernanceEntitlements } from "../commands/governance-entitlements";
 import { registerGovernanceLabels } from "../commands/governance-labels";
 import { registerGovernancePrincipals } from "../commands/governance-principals";
+import { registerGovernanceRequests } from "../commands/governance-requests";
 import { registerIdps } from "../commands/idps";
 import { registerInlinehooks } from "../commands/inlinehooks";
 import { registerIntegrations } from "../commands/integrations";
@@ -76,6 +77,7 @@ export function buildProgram(ctx: Ctx): Command {
   registerGovernancePrincipals(govCmd, ctx);
   registerGovernanceCollections(govCmd, ctx);
   registerGovernanceLabels(govCmd, ctx);
+  registerGovernanceRequests(govCmd, ctx);
   registerUserTypes(program, ctx);
   registerPolicies(program, ctx);
   registerAuthenticators(program, ctx);

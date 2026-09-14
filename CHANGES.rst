@@ -1,3 +1,15 @@
+v19.4.0
+=======
+
+* New: OAuth 2.0 service-app authentication (client credentials, ``private_key_jwt``,
+  optional DPoP) as an alternative to an SSWS API token - ``config new --client-id
+  --private-key-file --scopes`` creates an OAuth profile; ``config test`` checks that the
+  current profile (config file or ``OKTA_*`` env override) can authenticate
+* New: ``OKTA_CLIENT_ID``/``OKTA_PRIVATE_KEY``/``OKTA_PRIVATE_KEY_FILE``/``OKTA_SCOPES``/
+  ``OKTA_KID``/``OKTA_DPOP`` environment overrides, alongside the existing
+  ``OKTA_URL``/``OKTA_TOKEN`` pair; OAuth access tokens are cached on disk next to the config
+  file (``OKTA_CLI_NO_TOKEN_CACHE=1`` to disable)
+
 v19.3.0
 =======
 

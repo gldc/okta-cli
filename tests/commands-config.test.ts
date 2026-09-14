@@ -1,8 +1,14 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runTest, testCtx } from "./fixtures/ctx";
+import { startServer } from "./fixtures/server";
+
+// Test keys are always generated fresh here, never committed as literals.
+function ecJwk(): Promise<JsonWebKey> {
+  return crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]).then((pair) => crypto.subtle.exportKey("jwk", pair.privateKey));
+}
 
 describe("config commands", () => {
   let file: string;
@@ -53,5 +59,141 @@ describe("config commands", () => {
     expect(t.err.join("")).toContain("url must start with 'https://'");
     expect(await runTest(["config", "use-context", "nope"], t.ctx)).toBe(255);
     expect(t.err.join("")).toContain("okta-cli was not configured");
+  });
+
+  test("new --client-id: -t and --client-id are mutually exclusive", async () => {
+    const keyFile = join(mkdtempSync(join(tmpdir(), "okta-cli-")), "key.jwk.json");
+    await Bun.write(keyFile, JSON.stringify(await ecJwk()));
+    expect(
+      await runTest(
+        ["config", "new", "-n", "p1", "-u", "https://a.okta.com", "-t", "abcd1234", "--client-id", "cid1", "--private-key-file", keyFile, "--scopes", "okta.users.read"],
+        t.ctx,
+      ),
+    ).toBe(255);
+    expect(t.err.join("")).toContain("Use either -t or --client-id");
+  });
+
+  test("new --client-id: stores a JWK private key inline, plus kid/dpop", async () => {
+    const jwk = await ecJwk();
+    const keyFile = join(mkdtempSync(join(tmpdir(), "okta-cli-")), "key.jwk.json");
+    await Bun.write(keyFile, JSON.stringify(jwk));
+    expect(
+      await runTest(
+        ["config", "new", "-n", "p1", "-u", "https://a.okta.com", "--client-id", "cid1", "--private-key-file", keyFile, "--kid", "k1", "--scopes", "okta.users.read okta.groups.read", "--dpop"],
+        t.ctx,
+      ),
+    ).toBe(0);
+    const cfg = await Bun.file(file).json();
+    expect(cfg.profiles.p1).toEqual({
+      url: "https://a.okta.com",
+      auth: "oauth",
+      clientId: "cid1",
+      kid: "k1",
+      privateKey: jwk,
+      scopes: ["okta.users.read", "okta.groups.read"],
+      dpop: true,
+    });
+  });
+
+  test("new --client-id: a non-JSON key file is stored inline as a PEM string", async () => {
+    const keyFile = join(mkdtempSync(join(tmpdir(), "okta-cli-")), "key.pem");
+    const pemText = "not-actually-pem-but-not-json-either";
+    await Bun.write(keyFile, pemText);
+    expect(
+      await runTest(["config", "new", "-n", "p1", "-u", "https://a.okta.com", "--client-id", "cid1", "--private-key-file", keyFile, "--scopes", "okta.users.read"], t.ctx),
+    ).toBe(0);
+    const cfg = await Bun.file(file).json();
+    expect(cfg.profiles.p1.privateKey).toBe(pemText);
+    expect(cfg.profiles.p1.privateKeyFile).toBeUndefined();
+  });
+
+  test("new --client-id --keep-file-ref: stores only the path, not the key contents", async () => {
+    const keyFile = join(mkdtempSync(join(tmpdir(), "okta-cli-")), "key.jwk.json");
+    await Bun.write(keyFile, JSON.stringify(await ecJwk()));
+    expect(
+      await runTest(
+        ["config", "new", "-n", "p1", "-u", "https://a.okta.com", "--client-id", "cid1", "--private-key-file", keyFile, "--scopes", "okta.users.read", "--keep-file-ref"],
+        t.ctx,
+      ),
+    ).toBe(0);
+    const cfg = await Bun.file(file).json();
+    expect(cfg.profiles.p1.privateKeyFile).toBe(keyFile);
+    expect(cfg.profiles.p1.privateKey).toBeUndefined();
+  });
+
+  test("new --client-id: requires --private-key-file and --scopes", async () => {
+    expect(await runTest(["config", "new", "-n", "p1", "-u", "https://a.okta.com", "--client-id", "cid1", "--scopes", "okta.users.read"], t.ctx)).toBe(255);
+    expect(t.err.join("")).toContain("--private-key-file");
+    const keyFile = join(mkdtempSync(join(tmpdir(), "okta-cli-")), "key.jwk.json");
+    await Bun.write(keyFile, JSON.stringify(await ecJwk()));
+    expect(await runTest(["config", "new", "-n", "p1", "-u", "https://a.okta.com", "--client-id", "cid1", "--private-key-file", keyFile], t.ctx)).toBe(255);
+    expect(t.err.join("")).toContain("--scopes");
+  });
+});
+
+describe("config test", () => {
+  let srv: ReturnType<typeof startServer>;
+  afterEach(() => srv?.stop());
+
+  // Uses OKTA_* env overrides (see activeProfile, src/config.ts) rather than a config.json
+  // profile, since the mock server is plain http and resolveProfile's https guard - a real
+  // safeguard against sending SSWS tokens in cleartext - rightly refuses a config-file
+  // profile that isn't https. The env-var path is the same one `ctx.getClient` uses in
+  // production and skips that guard by design (a caller explicit about OKTA_URL knows what
+  // they're pointing at), so it exercises the exact same activeProfile -> buildClient ->
+  // client.get("/org") path `config test` runs for a real https profile.
+  test("ssws profile (OKTA_URL/OKTA_TOKEN): prints OK <companyName> (ssws)", async () => {
+    srv = startServer([{ method: "GET", path: "/api/v1/org", body: { companyName: "Acme Inc" } }]);
+    const t = testCtx(srv.url);
+    t.ctx.env = { OKTA_URL: srv.url, OKTA_TOKEN: "tok" };
+    expect(await runTest(["config", "test"], t.ctx)).toBe(0);
+    expect(t.out.at(-1)).toBe("OK Acme Inc (ssws)\n");
+  });
+
+  test("oauth profile (OKTA_CLIENT_ID/OKTA_PRIVATE_KEY/OKTA_SCOPES): prints OK <companyName> (oauth)", async () => {
+    srv = startServer([
+      { method: "POST", path: "/oauth2/v1/token", body: { token_type: "Bearer", access_token: "tok", expires_in: 3600 } },
+      { method: "GET", path: "/api/v1/org", body: { companyName: "Acme Inc" } },
+    ]);
+    const t = testCtx(srv.url);
+    t.ctx.env = { OKTA_URL: srv.url, OKTA_CLIENT_ID: "cid1", OKTA_PRIVATE_KEY: JSON.stringify(await ecJwk()), OKTA_SCOPES: "okta.users.read" };
+    expect(await runTest(["config", "test"], t.ctx)).toBe(0);
+    expect(t.out.at(-1)).toBe("OK Acme Inc (oauth)\n");
+  });
+
+  test("an API error surfaces with the usual OktaApiError exit code", async () => {
+    srv = startServer([{ method: "GET", path: "/api/v1/org", status: 400, body: { errorCode: "E0000001", errorSummary: "bad request", errorCauses: [] } }]);
+    const t = testCtx(srv.url);
+    t.ctx.env = { OKTA_URL: srv.url, OKTA_TOKEN: "tok" };
+    expect(await runTest(["config", "test"], t.ctx)).toBe(253);
+    expect(t.out.join("")).toContain("OKTA_API_ERROR: E0000001: bad request");
+  });
+
+  test("-v enables request logging to ctx.io.err (ssws)", async () => {
+    srv = startServer([{ method: "GET", path: "/api/v1/org", body: { companyName: "Acme Inc" } }]);
+    const t = testCtx(srv.url);
+    t.ctx.env = { OKTA_URL: srv.url, OKTA_TOKEN: "tok" };
+    expect(await runTest(["config", "test", "-v"], t.ctx)).toBe(0);
+    expect(t.err.join("")).toContain(`> GET ${srv.url}/api/v1/org`);
+  });
+
+  test("-vvv also logs the oauth token request, with sensitive headers redacted", async () => {
+    srv = startServer([
+      { method: "POST", path: "/oauth2/v1/token", body: { token_type: "Bearer", access_token: "tok", expires_in: 3600 } },
+      { method: "GET", path: "/api/v1/org", body: { companyName: "Acme Inc" } },
+    ]);
+    const t = testCtx(srv.url);
+    t.ctx.env = {
+      OKTA_URL: srv.url,
+      OKTA_CLIENT_ID: "cid1",
+      OKTA_PRIVATE_KEY: JSON.stringify(await ecJwk()),
+      OKTA_SCOPES: "okta.users.read",
+      OKTA_CLI_NO_TOKEN_CACHE: "1",
+    };
+    expect(await runTest(["config", "test", "-vvv"], t.ctx)).toBe(0);
+    const logged = t.err.join("");
+    expect(logged).toContain(`> POST ${srv.url}/oauth2/v1/token`);
+    expect(logged).toContain(`> GET ${srv.url}/api/v1/org`);
+    expect(logged).toContain("[REDACTED]");
   });
 });

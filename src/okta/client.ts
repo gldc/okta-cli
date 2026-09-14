@@ -1,5 +1,7 @@
 import { isPlainObject } from "../lib/dotted";
 import { CommunicationError, OktaApiError, type OktaErrorBody } from "./errors";
+import { redactHeaders } from "./http-log";
+import { dpopAth, dpopProof, type OAuthTokenSource } from "./oauth";
 
 export type Method = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 export type Query = Record<string, string | number | boolean | undefined>;
@@ -11,7 +13,21 @@ export interface ClientOptions {
   verbosity?: number;
 }
 
+// Either form the constructor accepts, once the bare-string SSWS shorthand is normalized away.
+export type ClientAuth = { kind: "ssws"; token: string } | { kind: "oauth"; source: OAuthTokenSource };
+
 const MAX_RETRIES = 10;
+
+// Pulls the quoted key="value" pairs out of a WWW-Authenticate challenge, e.g.
+// `Bearer error="insufficient_scope", error_description="...", scope="okta.policies.read"`.
+// Used to recover a machine-readable errorCode/summary for responses (typically a 403 on a
+// missing OAuth scope) that carry the real detail only in this header and an empty JSON body.
+function parseWwwAuthenticate(header: string | null): Record<string, string> | undefined {
+  if (!header) return undefined;
+  const out: Record<string, string> = {};
+  for (const m of header.matchAll(/([a-zA-Z_]+)="([^"]*)"/g)) out[m[1]!] = m[2]!;
+  return Object.keys(out).length ? out : undefined;
+}
 
 export function parseNextLink(header: string | null): string | undefined {
   if (!header) return undefined;
@@ -49,15 +65,24 @@ export function stripLinks(v: any): any {
 
 export class OktaClient {
   readonly url: string;
-  private readonly headers: Record<string, string>;
+  private readonly auth: ClientAuth;
+  private readonly baseHeaders: Record<string, string>;
   private readonly fetchImpl: typeof fetch;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly log: (line: string) => void;
   private readonly verbosity: number;
+  // The resource server's most recently observed `dpop-nonce` response header, remembered
+  // across requests so a paginated `getAll` doesn't pay a 401 round-trip on every page - Okta
+  // hands out a fresh nonce on any response, not only a use_dpop_nonce challenge (RFC 9449 8.2).
+  private dpopNonce?: string;
 
-  constructor(url: string, token: string, opts: ClientOptions = {}) {
+  // `token` is shorthand for `{ kind: "ssws", token }` - every existing caller keeps working
+  // unchanged; a config profile using an OAuth service app instead passes `{ kind: "oauth",
+  // source }` (src/cli/client-factory.ts builds one from the profile).
+  constructor(url: string, auth: string | ClientAuth, opts: ClientOptions = {}) {
     this.url = url.replace(/\/+$/, "");
-    this.headers = { "Content-Type": "application/json", Accept: "application/json", Authorization: `SSWS ${token}` };
+    this.auth = typeof auth === "string" ? { kind: "ssws", token: auth } : auth;
+    this.baseHeaders = { "Content-Type": "application/json", Accept: "application/json" };
     this.fetchImpl = opts.fetch ?? fetch;
     this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     this.log = opts.log ?? ((line) => process.stderr.write(line + "\n"));
@@ -76,20 +101,48 @@ export class OktaClient {
     return full.toString();
   }
 
+  // Authorization (+ DPoP proof, when the token is DPoP-bound) for one attempt at one request.
+  // SSWS is static; OAuth fetches/caches a token per call (OAuthTokenSource memoizes) and, for
+  // DPoP, signs a fresh proof every attempt since its `jti`/`iat`/`nonce` can't be reused. The
+  // nonce itself is sent proactively from `this.dpopNonce` (set in `send()` below) rather than
+  // waiting for a 401 to hand out - so only the very first request of a session pays that cost.
+  private async authHeaders(method: Method, url: string): Promise<Record<string, string>> {
+    if (this.auth.kind === "ssws") return { Authorization: `SSWS ${this.auth.token}` };
+    const { accessToken, tokenType } = await this.auth.source.token();
+    if (tokenType !== "DPoP") return { Authorization: `Bearer ${accessToken}` };
+    const material = await this.auth.source.dpopKeyMaterial();
+    if (!material) return { Authorization: `Bearer ${accessToken}` };
+    const htu = url.split("?")[0]!;
+    const ath = await dpopAth(accessToken);
+    const proof = await dpopProof({ htm: method, htu, nonce: this.dpopNonce, ath, key: material.key, publicJwk: material.publicJwk, alg: material.alg });
+    return { Authorization: `DPoP ${accessToken}`, DPoP: proof };
+  }
+
   // Shared fetch + retry/error-handling loop for both JSON (request()) and multipart (upload())
-  // bodies - only the URL/init differ between callers.
+  // bodies - only the URL/init differ between callers. Auth headers are (re)computed every
+  // attempt rather than by the caller, since an OAuth/DPoP retry needs a fresh token and/or proof.
   private async send(method: Method, url: string, init: RequestInit): Promise<Response> {
-    if (this.verbosity >= 1) this.log(`> ${method} ${url}`);
-    if (this.verbosity >= 3 && typeof init.body === "string") this.log(`> ${init.body}`);
+    const staticHeaders = (init.headers ?? {}) as Record<string, string>;
+    let dpopNonceRetried = false;
+    let invalidTokenRetried = false;
     for (let attempt = 0; ; attempt++) {
+      const headers = { ...staticHeaders, ...(await this.authHeaders(method, url)) };
+      if (this.verbosity >= 1) this.log(`> ${method} ${url}`);
+      if (this.verbosity >= 3 && typeof init.body === "string") this.log(`> ${init.body}`);
+      if (this.verbosity >= 3) this.log(`> ${JSON.stringify(redactHeaders(headers))}`);
       let rsp: Response;
       try {
-        rsp = await this.fetchImpl(url, init);
+        rsp = await this.fetchImpl(url, { ...init, headers });
       } catch (e) {
         throw new CommunicationError((e as Error).message);
       }
       if (this.verbosity >= 2) this.log(`< ${rsp.status}`);
-      if (this.verbosity >= 3) this.log(`< ${JSON.stringify(Object.fromEntries(rsp.headers))}`);
+      if (this.verbosity >= 3) this.log(`< ${JSON.stringify(redactHeaders(Object.fromEntries(rsp.headers)))}`);
+      // Remembered regardless of status - the resource server hands out a fresh nonce on any
+      // response, and using it proactively on the next request avoids paying a 401 round-trip
+      // for every subsequent page/call (RFC 9449 8.2).
+      const nonceHeader = rsp.headers.get("dpop-nonce");
+      if (nonceHeader) this.dpopNonce = nonceHeader;
       if (rsp.status === 429) {
         if (attempt >= MAX_RETRIES) throw new CommunicationError(`rate limited: gave up after ${MAX_RETRIES} retries`);
         const reset = Number(rsp.headers.get("X-Rate-Limit-Reset") ?? 0);
@@ -97,11 +150,34 @@ export class OktaClient {
         await this.sleep(delaySec * 1000);
         continue;
       }
+      if (rsp.status === 401 && this.auth.kind === "oauth") {
+        const wwwAuth = rsp.headers.get("www-authenticate") ?? "";
+        if (!dpopNonceRetried && /use_dpop_nonce/.test(wwwAuth) && this.dpopNonce) {
+          dpopNonceRetried = true;
+          continue;
+        }
+        if (!invalidTokenRetried && /invalid_token/.test(wwwAuth)) {
+          invalidTokenRetried = true;
+          await this.auth.source.forceRefresh();
+          continue;
+        }
+      }
       if (rsp.status >= 500) throw new CommunicationError(`HTTP ${rsp.status} ${rsp.statusText} for ${method} ${url}`);
       if (rsp.status >= 400) {
         const text = await rsp.text();
         let body: OktaErrorBody;
         try { body = JSON.parse(text); } catch { body = { errorSummary: text || rsp.statusText }; }
+        if (!body.errorCode) {
+          const challenge = parseWwwAuthenticate(rsp.headers.get("www-authenticate"));
+          if (challenge?.error) {
+            body = {
+              errorCode: challenge.error,
+              errorSummary: challenge.error_description
+                ? `${challenge.error_description}${challenge.scope ? ` (scope="${challenge.scope}")` : ""}`
+                : body.errorSummary,
+            };
+          }
+        }
         throw new OktaApiError(body, rsp.status);
       }
       return rsp;
@@ -110,7 +186,7 @@ export class OktaClient {
 
   async request(method: Method, path: string, opts: RequestOptions = {}): Promise<Response> {
     const url = this.buildUrl(path, opts.query, opts.basePath);
-    const init: RequestInit = { method, headers: opts.headers ? { ...this.headers, ...opts.headers } : this.headers };
+    const init: RequestInit = { method, headers: opts.headers ? { ...this.baseHeaders, ...opts.headers } : this.baseHeaders };
     // A string body (e.g. a raw SET JWT for security-events send) or raw bytes (e.g. a
     // certificate file for csr-publish) is sent as-is rather than JSON-encoded - every
     // other caller's body is an object/array from parseBody/bodyFromOpts.
@@ -123,8 +199,8 @@ export class OktaClient {
   // Authorization/Accept are kept.
   async upload(path: string, fieldName: string, filePath: string, opts: RequestOptions = {}): Promise<any> {
     const url = this.buildUrl(path, opts.query, opts.basePath);
-    const { "Content-Type": _contentType, ...baseHeaders } = this.headers;
-    const headers = opts.headers ? { ...baseHeaders, ...opts.headers } : baseHeaders;
+    const { "Content-Type": _contentType, ...withoutContentType } = this.baseHeaders;
+    const headers = opts.headers ? { ...withoutContentType, ...opts.headers } : withoutContentType;
     const form = new FormData();
     form.append(fieldName, Bun.file(filePath));
     const rsp = await this.send("POST", url, { method: "POST", headers, body: form });

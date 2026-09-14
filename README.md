@@ -167,7 +167,9 @@ is no automatic fallback for this yet, so re-create the profile (or edit the con
 OAuth access tokens are cached on disk next to the config file, as `tokens.json` (mode
 `0600`), keyed by org URL + client ID + scopes, and refreshed automatically before they
 expire. Set `OKTA_CLI_NO_TOKEN_CACHE=1` to disable the cache, e.g. for a CI job that
-shouldn't persist tokens between runs.
+shouldn't persist tokens between runs. DPoP-bound tokens are never written to disk: they are
+bound to a key pair that lives only for the duration of one CLI invocation, so `--dpop`
+profiles request a fresh token per process.
 
 ## Configuration
 

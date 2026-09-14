@@ -295,6 +295,26 @@ describe("OAuthTokenSource", () => {
     expect(persisted?.accessToken).toBe("new-tok");
   });
 
+  test("DPoP tokens are never persisted to the on-disk cache (bound to the process key)", async () => {
+    const profile = await makeProfile(true);
+    const dir = mkdtempSync(join(tmpdir(), "okta-cli-oauth-"));
+    const cache = new TokenCache({}, join(dir, "tokens.json"));
+    const cacheKey = tokenCacheKey(profile);
+    const now = Date.parse("2026-01-01T00:00:00Z");
+    // a stale entry from another process must be ignored, not reused
+    await cache.set(cacheKey, { accessToken: "other-process-tok", tokenType: "DPoP", expiresAt: now + 3_600_000 });
+    const mock = fetchMock([
+      () => Response.json({ error: "use_dpop_nonce" }, { status: 400, headers: { "dpop-nonce": "n1" } }),
+      () => Response.json({ token_type: "DPoP", access_token: "fresh-tok", expires_in: 3600 }),
+    ]);
+    const source = new OAuthTokenSource(profile, { fetch: mock.fetch, cache, now: () => now });
+    const result = await source.token();
+    expect(result.accessToken).toBe("fresh-tok");
+    expect(mock.calls.length).toBe(2);
+    const persisted = await cache.get(cacheKey);
+    expect(persisted?.accessToken).toBe("other-process-tok");
+  });
+
   test("non-200 without use_dpop_nonce -> CommunicationError('OAUTH_ERROR: <error>: <description>')", async () => {
     const profile = await makeProfile();
     const mock = fetchMock([() => Response.json({ error: "invalid_client", error_description: "bad assertion" }, { status: 401 })]);

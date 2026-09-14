@@ -223,7 +223,10 @@ export class OAuthTokenSource {
     this.profile = profile;
     this.fetchImpl = opts.fetch ?? fetch;
     this.now = opts.now ?? Date.now;
-    this.cache = opts.cache;
+    // A DPoP-bound token is only usable with the ephemeral key pair of the process that
+    // requested it (see getDpopKeyMaterial), so persisting it across processes would just
+    // produce `invalid_dpop_proof` on the next run. Memory-only for DPoP profiles.
+    this.cache = profile.dpop ? undefined : opts.cache;
     this.cacheKey = tokenCacheKey(profile);
     this.log = opts.log ?? ((line) => process.stderr.write(line + "\n"));
     this.verbosity = opts.verbosity ?? 0;

@@ -4,7 +4,12 @@ import { redactHeaders } from "./http-log";
 import { dpopAth, dpopProof, type OAuthTokenSource } from "./oauth";
 
 export type Method = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
-export type Query = Record<string, string | number | boolean | undefined>;
+// A `string[]` value sends one repeated query param per element (buildUrl uses
+// `searchParams.append`, not `set`) rather than a single comma-joined value - confirmed live
+// against runlayer.okta.com: `GET .../grants?...&include=full_entitlements,metadata` 400s
+// ("Query param enum (\"full_entitlements,metadata\") is not valid"), while
+// `include=full_entitlements&include=metadata` returns 200.
+export type Query = Record<string, string | number | boolean | string[] | undefined>;
 export interface RequestOptions { query?: Query; body?: unknown; basePath?: string; headers?: Record<string, string> }
 export interface ClientOptions {
   fetch?: typeof fetch;
@@ -97,7 +102,11 @@ export class OktaClient {
       const p = path.replace(/^\/+/, "");
       full = new URL(`${this.url}/${[base, p].filter(Boolean).join("/")}`);
     }
-    for (const [k, v] of Object.entries(query ?? {})) if (v !== undefined) full.searchParams.set(k, String(v));
+    for (const [k, v] of Object.entries(query ?? {})) {
+      if (v === undefined) continue;
+      if (Array.isArray(v)) { for (const item of v) full.searchParams.append(k, String(item)); continue; }
+      full.searchParams.set(k, String(v));
+    }
     return full.toString();
   }
 

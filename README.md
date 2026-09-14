@@ -108,6 +108,15 @@ $ okta-cli config new -n svc -u https://my.okta.com \ # create an OAuth service-
            --scopes "okta.users.read okta.groups.read"
 $ okta-cli config test                                # verify a profile can authenticate
 
+# new in 19.5.0
+$ okta-cli gov campaigns list                          # list access certification campaigns
+$ okta-cli gov reviews list --limit 20                 # list campaign reviews
+$ okta-cli gov entitlement-bundles list --include full_entitlements
+$ okta-cli gov grants list \                           # required -f/--filter on this endpoint
+           -f 'target.externalId eq "0oa1b2c3" AND target.type eq "APPLICATION"'
+$ okta-cli gov security-access-reviews stats           # counts of AI security access reviews
+$ okta-cli gov tasks list --filter 'status eq "PENDING"'
+
 $ okta-cli version                                    # print version and exit
 ```
 
@@ -308,7 +317,39 @@ matching exactly:
 
 As of 19.3.0, the CLI covers every path family of the pinned spec that has documented
 operations, except end-user-facing flows and group-rules-by-user
-(`/groups/{groupId}/users/{userId}/group-rules`, declared in the spec with no operations).
+(`/groups/{groupId}/users/{userId}/group-rules`, declared in the spec with no operations). As
+of 19.5.0, `gov` covers the Okta Identity Governance API on the same basis (see below).
+
+### Identity Governance
+
+`gov`/`governance` wraps the Okta Identity Governance (OIG) API, which lives on two base
+paths distinct from the rest of this CLI: `/governance/api/v1` and `/governance/api/v2`
+(`gov requests` is the v2 access-request surface, `gov requests-v1` the superseded v1 one).
+Only `requests`, `catalog`, `request-conditions`, `request-sequences`, `request-settings`,
+`entitlement-settings`, `revoke-principal-access`, `security-access-reviews`, and `tasks` are
+v2; every other `gov` group is v1. Each group's `-h` description says which. The 28 end-user
+`/my/**` paths (a signed-in user acting on their own requests/tasks) are intentionally not
+covered - this CLI is an admin tool.
+
+- **`--limit <n>` is always a client-side cap**, not a page size or query parameter: it stops
+  the CLI after `n` rows have been paginated through, but is never sent to Okta as `limit`.
+  Per-endpoint server-side maxima vary (some default to 10, one caps at 100), and
+  `gov labels list` has no `--limit` at all because that endpoint rejects the `limit` query
+  parameter outright (`Query parameter limit is unexpected`).
+- **`-f/--filter` is a required option, with no default value**, on 11 governance operations
+  that answer 400 without one: `gov entitlements list`, `gov entitlements values-all`,
+  `gov grants list`, `gov principal-access get`, `gov principal-entitlements list`,
+  `gov principal-entitlements history`, `gov resource-labels list`,
+  `gov resource-owners list`, `gov resource-owners catalog-resources`,
+  `gov catalog entries`, `gov catalog user-entries`.
+- Governance resources are frequently addressed by **ORN** (Okta Resource Name), e.g.
+  `orn:okta:idp:00ofsdghasfhas54wewe:apps:salesforce:0oafxqCAJWWGELFTYASJ`; some endpoints
+  (e.g. `gov resource-labels list -f`) validate the ORN server-side and reject a made-up one.
+- Two tenant prerequisites seen against live orgs: `E0000015` means the OIG feature (or a
+  specific family like collections) isn't licensed on that tenant; `E0000195`
+  ("Authenticated user not assigned to Okta Access Requests") means the admin user making the
+  call needs to be assigned the Okta Access Requests app before `gov request-types`/
+  `gov requests` will answer, even with a valid API token.
 
 ## References
 

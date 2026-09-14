@@ -1,13 +1,14 @@
+import govSpecPaths from "./gov-spec-paths.json";
 import specPaths from "./spec-paths.json";
 
-const templates = (specPaths as string[]).map((p) => new RegExp("^" + p.replace(/[.*+?^$()|[\]\\]/g, "\\$&").replace(/\{[^}]+\}/g, "[^/]+") + "$"));
+const templates = [...(specPaths as string[]), ...(govSpecPaths as string[])].map((p) => new RegExp("^" + p.replace(/[.*+?^$()|[\]\\]/g, "\\$&").replace(/\{[^}]+\}/g, "[^/]+") + "$"));
 
 // Paths outside /api/v1 (attack-protection, integrations, security, privileged-access,
-// okta-personal-settings, webauthn-registration) are already full paths in spec-paths.json
-// and must not be prefixed with /api/v1.
+// okta-personal-settings, webauthn-registration, governance) are already full paths in
+// spec-paths.json/gov-spec-paths.json and must not be prefixed with /api/v1.
 const FULL_PATH_PREFIXES = [
   "/api/", "/oauth2/", "/.well-known/",
-  "/attack-protection/", "/integrations/", "/security/", "/privileged-access/", "/okta-personal-settings/", "/webauthn-registration/",
+  "/attack-protection/", "/integrations/", "/security/", "/privileged-access/", "/okta-personal-settings/", "/webauthn-registration/", "/governance/",
 ];
 
 export function knownPath(path: string): boolean {

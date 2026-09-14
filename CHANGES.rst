@@ -1,3 +1,21 @@
+v19.5.0
+=======
+
+* New: ``governance``/``gov`` command group covering the Okta Identity Governance (OIG) API
+  (``/governance/api/v1`` and ``/governance/api/v2``): campaigns + reviews; entitlements,
+  entitlement values, entitlement bundles, grants; principal access/entitlements/settings;
+  collections (+ assignments, catalog users, resources); labels, resource labels, resource
+  owners; request types and access requests (v1 + v2, plus the request catalog); resource
+  request conditions/sequences/settings, entitlement settings, revoke principal access;
+  tasks; security access reviews; org governance settings, integrations, risk rules;
+  delegates, teams, operations
+* ``--limit`` on governance list commands is a client-side cap; the CLI never sends a
+  ``limit`` query parameter (per-endpoint server maxima differ, and some endpoints reject it
+  outright)
+* ``-f/--filter`` is a required option (no default) on the 11 governance operations that 400
+  without it
+* End-user ``/my/**`` governance paths are intentionally out of scope
+
 v19.4.0
 =======
 

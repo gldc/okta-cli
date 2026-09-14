@@ -253,7 +253,7 @@ export class OAuthTokenSource {
     return result;
   }
 
-  private async requestToken(tokenEndpoint: string, nowMs: number, dpopNonce?: string): Promise<OAuthToken> {
+  private async requestToken(tokenEndpoint: string, nowMs: number, dpopNonce?: string, retried = false): Promise<OAuthToken> {
     const assertion = await clientAssertion(this.profile, tokenEndpoint, nowMs);
     const body = new URLSearchParams({
       grant_type: "client_credentials",
@@ -275,8 +275,12 @@ export class OAuthTokenSource {
       parsed = {};
     }
     if (rsp.status !== 200) {
-      if (this.profile.dpop && !dpopNonce && parsed.error === "use_dpop_nonce") {
-        return this.requestToken(tokenEndpoint, nowMs, rsp.headers.get("dpop-nonce") ?? "");
+      if (this.profile.dpop && !retried && parsed.error === "use_dpop_nonce") {
+        const nonce = rsp.headers.get("dpop-nonce");
+        // Only worth retrying if the server actually gave us a nonce to retry with - otherwise
+        // it's the same request again, and `retried` alone would still bound this to one retry,
+        // but there's no point spending it on a request we already know will fail the same way.
+        if (nonce) return this.requestToken(tokenEndpoint, nowMs, nonce, true);
       }
       throw new CommunicationError(`OAUTH_ERROR: ${parsed.error ?? "unknown_error"}: ${parsed.error_description ?? rsp.statusText}`);
     }

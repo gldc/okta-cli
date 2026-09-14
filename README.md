@@ -144,9 +144,10 @@ $ okta-cli version                                    # print version and exit
 
 ### DPoP
 
-Pass `--dpop` when the service app requires DPoP-bound tokens. okta-cli also detects this
-automatically from an `invalid_dpop_proof` response on a profile that didn't ask for it, and
-switches over without needing a restart.
+Pass `--dpop` when the service app requires DPoP-bound tokens. If a profile created without
+`--dpop` hits an app that requires it, the token endpoint returns `invalid_dpop_proof`; there
+is no automatic fallback for this yet, so re-create the profile (or edit the config file) with
+`--dpop` set.
 
 ### Environment variable overrides
 

@@ -208,6 +208,34 @@ describe("OAuthTokenSource", () => {
     expect(claims.nonce).toBe("n1");
   });
 
+  test("DPoP use_dpop_nonce with no dpop-nonce header bails instead of retrying forever", async () => {
+    const profile = await makeProfile(true);
+    // Only one response queued: a second fetch call would throw "no more responses queued" and
+    // fail the test loudly, which is the point - this guards against unbounded recursion.
+    const mock = fetchMock([
+      () => Response.json({ error: "use_dpop_nonce", error_description: "no nonce given" }, { status: 400 }),
+    ]);
+    const source = new OAuthTokenSource(profile, { fetch: mock.fetch, now: () => Date.parse("2026-01-01T00:00:00Z") });
+    const err = await source.token().catch((e) => e);
+    expect(err).toBeInstanceOf(CommunicationError);
+    expect(err.message).toBe("OAUTH_ERROR: use_dpop_nonce: no nonce given");
+    expect(mock.calls.length).toBe(1);
+  });
+
+  test("DPoP use_dpop_nonce repeated on the retry itself is not retried again (bounded to one retry)", async () => {
+    const profile = await makeProfile(true);
+    const mock = fetchMock([
+      () => new Response(JSON.stringify({ error: "use_dpop_nonce" }), { status: 400, headers: { "dpop-nonce": "n1" } }),
+      () =>
+        Response.json({ error: "use_dpop_nonce", error_description: "still no good" }, { status: 400, headers: { "dpop-nonce": "n2" } }),
+    ]);
+    const source = new OAuthTokenSource(profile, { fetch: mock.fetch, now: () => Date.parse("2026-01-01T00:00:00Z") });
+    const err = await source.token().catch((e) => e);
+    expect(err).toBeInstanceOf(CommunicationError);
+    expect(err.message).toBe("OAUTH_ERROR: use_dpop_nonce: still no good");
+    expect(mock.calls.length).toBe(2);
+  });
+
   test("cache hit avoids a second token request", async () => {
     const profile = await makeProfile();
     const dir = mkdtempSync(join(tmpdir(), "okta-cli-oauth-"));

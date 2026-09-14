@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { buildProgram } from "../src/cli/program";
@@ -60,4 +61,32 @@ describe("mcp http server", () => {
     expect(a.isError).toBeFalsy(); expect(b.isError).toBeFalsy();
     await c.close();
   });
+});
+
+// Regression test for a real bug: the SDK's StdioServerTransport only wires 'data'/'error' on
+// stdin, never onclose, so `okta-cli mcp stdio` used to hang forever once the client closed its
+// end of the pipe - an orphan process holding an Okta token in memory per disconnected client.
+describe("mcp stdio transport", () => {
+  test("process exits once stdin closes (EOF)", async () => {
+    const mainPath = join(import.meta.dir, "..", "src", "main.ts");
+    const proc = Bun.spawn({
+      cmd: ["bun", mainPath, "mcp", "stdio", "--read-only", "--include", "groups_list"],
+      env: { ...process.env, OKTA_URL: "http://127.0.0.1:1", OKTA_TOKEN: "tok" },
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const initialize = { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "t", version: "0" } } };
+    proc.stdin.write(`${JSON.stringify(initialize)}\n`);
+    await proc.stdin.end();
+
+    const stdoutP = new Response(proc.stdout).text();
+    const exitCode = await Promise.race([
+      proc.exited,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out waiting for exit")), 5000)),
+    ]);
+    expect(exitCode).toBe(0);
+    const stdout = await stdoutP;
+    expect(stdout).toContain('"result"');
+  }, 10000);
 });

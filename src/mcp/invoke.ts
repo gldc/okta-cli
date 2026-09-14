@@ -40,7 +40,9 @@ function optionTokens(def: ToolDef, input: Record<string, unknown>, opt: ToolDef
       if (opt.negate) return v === false ? [opt.long] : [];
       return v === true ? [opt.long] : [];
     case "string":
-      return [`${opt.long}=${typeof v === "string" ? v : String(v)}`];
+      if (opt.isPath) throw new ExitError(`${opt.attr} is a local file path and is rejected in MCP mode`);
+      if (typeof v !== "string" && typeof v !== "number") throw new ExitError(`${opt.attr} must be a string`);
+      return [`${opt.long}=${v}`];
     case "integer": {
       if (typeof v !== "number" || !Number.isInteger(v)) throw new ExitError(`${opt.attr} must be an integer`);
       return [`${opt.long}=${v}`];
@@ -62,7 +64,7 @@ function optionTokens(def: ToolDef, input: Record<string, unknown>, opt: ToolDef
 }
 
 export function buildArgv(def: ToolDef, input: Record<string, unknown>): string[] {
-  const knownKeys = new Set<string>([...def.args.map((a) => a.name), ...def.opts.map((o) => o.attr)]);
+  const knownKeys = new Set<string>([...def.args.map((a) => a.key), ...def.opts.map((o) => o.attr)]);
   for (const key of Object.keys(input)) {
     if (!knownKeys.has(key)) throw new ExitError(`unknown argument: ${key}`);
   }
@@ -75,13 +77,14 @@ export function buildArgv(def: ToolDef, input: Record<string, unknown>): string[
   const positionalArgv: string[] = [];
   let sawMissingOptional = false;
   for (const arg of def.args) {
-    const v = input[arg.name];
+    const v = input[arg.key];
     if (v === undefined || v === null) {
       if (arg.required) throw new ExitError(`missing positional argument ${arg.name}`);
       sawMissingOptional = true;
       continue;
     }
     if (sawMissingOptional) throw new ExitError(`missing positional argument before ${arg.name}`);
+    if (arg.isPath) throw new ExitError(`${arg.name} is a local file path and is rejected in MCP mode`);
     if (arg.variadic) {
       const arr = Array.isArray(v) ? v : [v];
       positionalArgv.push(...arr.map((item) => String(item)));

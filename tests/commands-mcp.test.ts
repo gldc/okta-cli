@@ -23,6 +23,13 @@ describe("mcp tools", () => {
     expect(t.some((x: any) => x.name === "users_list")).toBe(true);
     expect(t.some((x: any) => x.name === "users_get")).toBe(false);
   });
+  test("table mode (no -j) prints a real table, not a field-not-found warning", async () => {
+    const { ctx, out, err } = testCtx("http://127.0.0.1:1");
+    expect(await runTest(["mcp", "tools", "--include", "groups_list"], ctx)).toBe(0);
+    const stdout = out.join("");
+    expect(stdout).toContain("groups_list");
+    expect(err.join("")).not.toContain("never filled or non-existant");
+  });
   test("mcp serve is registered with host/port/path options", async () => {
     const { ctx, out, err } = testCtx("http://127.0.0.1:1");
     await runTest(["mcp", "serve", "--help"], ctx);

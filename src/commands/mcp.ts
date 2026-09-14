@@ -36,7 +36,7 @@ function buildDefs(ctx: Ctx, buildProgramFn: () => Command, opts: Record<string,
 export function registerMcp(parent: Command, ctx: Ctx, buildProgramFn: () => Command): Command {
   const mcp = subgroup(parent, "mcp", "Serve the CLI as an MCP server (streamable HTTP or stdio)");
 
-  addOutputOptions(addVerbose(addCatalogOptions(mcp.command("tools").description("List the MCP tool catalog"))), "name readOnly description")
+  addOutputOptions(addVerbose(addCatalogOptions(mcp.command("tools").description("List the MCP tool catalog"))), "name,readOnly,description")
     .action(action(ctx, (_client, opts) => buildDefs(ctx, buildProgramFn, opts).map((d) => ({ name: d.name, readOnly: d.readOnly, description: d.description })), { client: false }));
 
   addVerbose(addCatalogOptions(mcp.command("serve").description("Serve the CLI as an MCP server over streamable HTTP")

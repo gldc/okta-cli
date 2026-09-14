@@ -59,6 +59,36 @@ describe("mcp catalog", () => {
     const d = defs.find((x) => (x.inputSchema.properties as any).limit)!;
     expect((d.inputSchema.properties as any).limit.type).toBe("integer");
   });
+  test("known-mutating leaves are never classified read-only", () => {
+    const mutating = [
+      "users_change_password", "users_forgot_password", "users_change_recovery_question",
+      "apps_addgroup", "brands_theme_favicon", "brands_theme_background", "brands_theme_logo",
+    ];
+    for (const name of mutating) {
+      const d = byName.get(name)!;
+      expect(d.readOnly).toBe(false);
+      expect(d.annotations.readOnlyHint).toBe(false);
+    }
+  });
+  test("no positional arg's schema key collides with an option attr", () => {
+    for (const d of defs) {
+      const optAttrs = new Set(d.opts.map((o) => o.attr));
+      for (const arg of d.args) expect(optAttrs.has(arg.key)).toBe(false);
+    }
+    // These three used to collide (arg.name === opt.attr) before disambiguation.
+    expect(byName.get("groups_role_target_add")!.args[0]!.key).toBe("arg_group");
+    expect(byName.get("groups_role_target_delete")!.args[0]!.key).toBe("arg_group");
+    expect(byName.get("auth_servers_associated_add")!.args[0]!.key).toBe("arg_server");
+  });
+  test("local file paths are marked and rejected in the schema description", () => {
+    const d = byName.get("apps_logo")!;
+    const fileOpt = d.opts.find((o) => o.attr === "file")!;
+    expect(fileOpt.isPath).toBe(true);
+    const p = d.inputSchema.properties as Record<string, any>;
+    expect(p.file.description).toContain("Rejected in MCP mode");
+    const bulk = byName.get("users_bulk_add")!;
+    expect(bulk.args[0]!.isPath).toBe(true);
+  });
   test("filterCatalog read-only / include / exclude", () => {
     const ro = filterCatalog(defs, { readOnly: true });
     expect(ro.every((d) => d.readOnly)).toBe(true);

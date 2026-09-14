@@ -2,8 +2,10 @@ import type { Command } from "commander";
 
 export interface ToolArg {
   name: string;
+  key: string; // schema property name; differs from `name` when it collides with an opt attr
   required: boolean;
   variadic: boolean;
+  isPath?: boolean; // a local server-filesystem path; rejected in MCP mode
 }
 
 export interface ToolOpt {
@@ -15,6 +17,7 @@ export interface ToolOpt {
   choices?: string[];
   description: string;
   default?: unknown;
+  isPath?: boolean; // a local server-filesystem path; rejected in MCP mode
 }
 
 export interface ToolDef {
@@ -34,16 +37,26 @@ export const EXCLUDED_GROUPS = new Set(["config", "version", "mcp"]);
 export const EXCLUDED_OPTS = new Set(["json", "yaml", "csv", "csvDialect", "colwidth", "outputFields", "verbose", "confirmation", "help"]);
 
 export const WRITE_VERBS = [
-  "add", "adduser", "create", "update", "replace", "patch", "delete", "remove", "removeuser", "revoke",
-  "activate", "deactivate", "reactivate", "suspend", "unsuspend", "unlock", "reset", "set", "assign", "unassign",
-  "clear", "expire", "link", "unlink", "publish", "rotate", "generate", "import", "bulk", "subscribe",
-  "unsubscribe", "reorder", "allow", "disallow", "upload", "logo", "sync", "execute", "run", "retry", "enable",
-  "disable", "promote", "opt", "verify", "send", "test", "cancel", "approve", "deny", "reassign", "resend",
-  "close", "reopen", "launch", "end", "start", "stop", "move", "clone", "trigger", "invoke", "register",
-  "deregister", "enroll", "unenroll", "grant", "exchange", "migrate", "rename", "preview", "dr", "failover",
+  "add", "addgroup", "adduser", "create", "update", "replace", "patch", "delete", "remove", "removegroup",
+  "removeuser", "revoke", "activate", "deactivate", "reactivate", "suspend", "unsuspend", "unlock", "reset", "set",
+  "assign", "unassign", "clear", "expire", "link", "unlink", "publish", "rotate", "generate", "import", "bulk",
+  "subscribe", "unsubscribe", "reorder", "allow", "disallow", "upload", "logo", "favicon", "background", "sync",
+  "execute", "run", "retry", "enable", "disable", "promote", "opt", "verify", "send", "test", "cancel", "approve",
+  "deny", "reassign", "resend", "close", "reopen", "launch", "end", "start", "stop", "move", "clone", "trigger",
+  "invoke", "register", "deregister", "enroll", "unenroll", "grant", "exchange", "migrate", "rename", "preview",
+  "dr", "failover", "change", "forgot",
 ];
 
 const DESTRUCTIVE_RE = /(^|-)(delete|remove|removeuser|revoke|deactivate|suspend|clear|expire|unlink|unassign|unsubscribe|reset|cancel|deny|end|stop|unenroll|deregister)($|-)/;
+
+// Options that always write, regardless of leaf name: a real HTTP body, a field-setter, or a
+// local file/certificate upload (which also has to be rejected as a path in MCP mode, see
+// FILE_PATH_OPT_LONGS below). `--delete` (theme assets) is a mutation with no --file present.
+const NEVER_READ_ONLY_OPT_LONGS = new Set(["--body", "--set", "--file", "--cert", "--key", "--chain", "--delete"]);
+
+// Options whose value is a path read from the server's filesystem; rejected outright in MCP
+// mode (src/mcp/invoke.ts) rather than passed through.
+export const FILE_PATH_OPT_LONGS = new Set(["--file", "--cert", "--key", "--chain"]);
 
 export function toolName(path: string[]): string {
   return path.map((p) => p.replace(/-/g, "_")).join("_");
@@ -57,7 +70,7 @@ export function humanReadableArgName(arg: { name(): string; required: boolean; v
 export function isReadOnly(leaf: Command, path: string[]): boolean {
   const hasJson = leaf.options.some((o) => o.attributeName() === "json");
   if (!hasJson) return false;
-  if (leaf.options.some((o) => o.long === "--body" || o.long === "--set")) return false;
+  if (leaf.options.some((o) => NEVER_READ_ONLY_OPT_LONGS.has(o.long ?? ""))) return false;
   const leafName = path[path.length - 1] ?? "";
   const tokens = leafName.split("-");
   if (tokens.some((t) => WRITE_VERBS.includes(t))) return false;
@@ -96,7 +109,7 @@ function schemaForOpt(opt: ToolOpt): Record<string, unknown> {
       };
   }
   if (opt.choices) schema.enum = opt.choices;
-  schema.description = opt.description;
+  schema.description = opt.isPath ? `${opt.description} Rejected in MCP mode: local file paths are not readable by a tool call.` : opt.description;
   return schema;
 }
 
@@ -117,6 +130,7 @@ function buildOpts(leaf: Command): ToolOpt[] {
       description: opt.description,
     };
     if (opt.argChoices) toolOpt.choices = opt.argChoices;
+    if (FILE_PATH_OPT_LONGS.has(toolOpt.long)) toolOpt.isPath = true;
     if (opt.negate) toolOpt.default = true;
     else if (opt.defaultValue !== undefined && !(Array.isArray(opt.defaultValue) && opt.defaultValue.length === 0)) {
       toolOpt.default = opt.defaultValue;
@@ -126,8 +140,15 @@ function buildOpts(leaf: Command): ToolOpt[] {
   return out;
 }
 
-function buildArgs(leaf: Command): ToolArg[] {
-  return leaf.registeredArguments.map((a) => ({ name: a.name(), required: a.required, variadic: a.variadic }));
+function buildArgs(leaf: Command, opts: ToolOpt[]): ToolArg[] {
+  const optAttrs = new Set(opts.map((o) => o.attr));
+  return leaf.registeredArguments.map((a) => {
+    const name = a.name();
+    // A positional whose name collides with an option's attributeName would otherwise share one
+    // schema property and one argv slot with that option (see buildArgv); disambiguate the key.
+    const key = optAttrs.has(name) ? `arg_${name}` : name;
+    return { name, key, required: a.required, variadic: a.variadic, isPath: name === "file" };
+  });
 }
 
 function buildDescription(leaf: Command): string {
@@ -141,10 +162,13 @@ function buildInputSchema(args: ToolArg[], opts: ToolOpt[]): Record<string, unkn
   const properties: Record<string, unknown> = {};
   const required: string[] = [];
   for (const arg of args) {
-    properties[arg.name] = arg.variadic
-      ? { type: "array", items: { type: "string" }, description: `Positional argument ${arg.name}` }
-      : { type: "string", description: `Positional argument ${arg.name}` };
-    if (arg.required) required.push(arg.name);
+    const desc = arg.isPath
+      ? `Positional argument ${arg.name}. Rejected in MCP mode: local file paths are not readable by a tool call.`
+      : `Positional argument ${arg.name}`;
+    properties[arg.key] = arg.variadic
+      ? { type: "array", items: { type: "string" }, description: desc }
+      : { type: "string", description: desc };
+    if (arg.required) required.push(arg.key);
   }
   for (const opt of opts) {
     properties[opt.attr] = schemaForOpt(opt);
@@ -161,8 +185,8 @@ function walk(cmd: Command, path: string[], out: ToolDef[]): void {
     const subPath = [...path, name];
     if (path.length === 0 && EXCLUDED_GROUPS.has(name)) continue;
     if (sub.commands.length === 0) {
-      const args = buildArgs(sub);
       const opts = buildOpts(sub);
+      const args = buildArgs(sub, opts);
       const hasJson = sub.options.some((o) => o.attributeName() === "json");
       const hasNoConfirmation = sub.options.some((o) => o.attributeName() === "confirmation");
       const readOnly = isReadOnly(sub, subPath);

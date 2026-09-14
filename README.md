@@ -386,6 +386,11 @@ misclassified tool cannot mutate data.
 `FILE:` body prefixes and other local-file options are rejected in MCP mode; a tool call never
 reads a file on the server's filesystem.
 
+**No auth on `/mcp`:** `mcp serve`'s HTTP endpoint has no authentication of its own - anyone who
+can reach the port can call it. The Dockerfile binds `0.0.0.0` and defaults to read-only, but it
+must still sit behind something that authenticates (the Runlayer gateway, a sidecar, etc.); don't
+expose it directly to the internet.
+
 **Deploying to Runlayer:** build the connector from the repo's `Dockerfile` (`bun build
 --compile` into a Debian slim image, entrypoint `okta-cli`, default command `mcp serve`), then:
 

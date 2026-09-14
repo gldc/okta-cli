@@ -12,6 +12,7 @@ import { registerFeatures } from "../commands/features";
 import { registerGroupRules } from "../commands/group-rules";
 import { registerGroups } from "../commands/groups";
 import { registerGovernance } from "../commands/governance";
+import { registerGovernanceEntitlements } from "../commands/governance-entitlements";
 import { registerIdps } from "../commands/idps";
 import { registerInlinehooks } from "../commands/inlinehooks";
 import { registerIntegrations } from "../commands/integrations";
@@ -65,7 +66,8 @@ export function buildProgram(ctx: Ctx): Command {
   registerInlinehooks(program, ctx);
   registerSchemas(program, ctx, usersCmd);
   registerGroupRules(groupsCmd, ctx);
-  registerGovernance(program, ctx);
+  const govCmd = registerGovernance(program, ctx);
+  registerGovernanceEntitlements(govCmd, ctx);
   registerUserTypes(program, ctx);
   registerPolicies(program, ctx);
   registerAuthenticators(program, ctx);

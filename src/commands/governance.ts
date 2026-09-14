@@ -44,7 +44,19 @@ export function registerGovernance(program: Command, ctx: Ctx): Command {
       return client.getAll("/teams", { basePath: GOV_V1, listKey: "data", query, max: opts.limit });
     }));
 
-  // Every later task calls its own registerGovernance<Family>(g, ctx) here.
+  // Deviation from Task 1's plan: the plan's own comment here originally said every later
+  // task would call its own registerGovernance<Family>(g, ctx) from inside this function,
+  // imported from src/commands/governance-<family>.ts. That direction (governance.ts
+  // importing a family file that itself imports GOV_V1/GOV_V2 back from governance.ts)
+  // is a circular import, and since the family ResourceSpec objects reference GOV_V1 at
+  // module-evaluation time (not inside a function), it fails hard at load with
+  // "ReferenceError: Cannot access 'GOV_V1' before initialization" - confirmed by running
+  // `bun run check` with governance-entitlements.ts wired this way. The rest of the
+  // codebase already avoids exactly this shape (apps.ts never imports apps-extra.ts;
+  // groups.ts never imports group-rules.ts) by wiring "extra" registrations from
+  // src/cli/program.ts instead, one level up. Every registerGovernance<Family>(g, ctx)
+  // call is wired from program.ts the same way - see the block after `registerGovernance`
+  // there - not from here.
 
   return g;
 }

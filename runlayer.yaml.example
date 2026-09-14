@@ -23,5 +23,7 @@ env:
   # OKTA_SCOPES: okta.users.read okta.groups.read
   # OKTA_DPOP: "1"
   OKTA_MCP_READ_ONLY: "1"
-  # OKTA_MCP_INCLUDE: users_*,groups_*
+  # Ship only the tool families this connector is for. The full catalog is ~780 tools /
+  # ~0.5 MB per tools/list, which is slow to scan and hard for clients to use.
+  OKTA_MCP_INCLUDE: users_*,groups_*,apps_*,logs_list
   # OKTA_MCP_EXCLUDE: "*_delete"

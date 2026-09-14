@@ -27,8 +27,18 @@ export const GOV_ENTITLEMENTS: ResourceSpec = {
 // `entitlement-bundle-updatable` (the PUT body schema) requires `id`, `targetResourceOrn`, and
 // `target` - all stripped from (or never merged into) the replace body by defineResource's
 // default merge base / omit list. Re-add them from the fetched object.
-async function entitlementBundleReplaceBody(_client: OktaClient, existing: any, body: Record<string, unknown>): Promise<Record<string, unknown>> {
-  return { ...body, id: existing.id, targetResourceOrn: existing.targetResourceOrn, target: existing.target };
+// entitlement-bundle-updatable requires id, targetResourceOrn, target AND a non-empty
+// entitlements list, but a plain GET of a bundle omits `entitlements` (only
+// `?include=full_entitlements` returns them) - so a -s-only replace must re-fetch them and
+// reduce to the writable `{ id, values: [{ id }] }` shape, or Okta answers "Bundle can not be
+// created or updated with an empty entitlement(s)" (seen live).
+async function entitlementBundleReplaceBody(client: OktaClient, existing: any, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  let entitlements = body.entitlements;
+  if (!Array.isArray(entitlements) || entitlements.length === 0) {
+    const full = await client.json("GET", `/entitlement-bundles/${encodeURIComponent(existing.id)}`, { basePath: GOV_V1, query: { include: "full_entitlements" } });
+    entitlements = ((full.entitlements ?? []) as any[]).map((e) => ({ id: e.id, values: ((e.values ?? []) as any[]).map((v) => ({ id: v.id })) }));
+  }
+  return { ...body, id: existing.id, targetResourceOrn: existing.targetResourceOrn, target: existing.target, entitlements };
 }
 
 export const GOV_ENTITLEMENT_BUNDLES: ResourceSpec = {

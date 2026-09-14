@@ -161,7 +161,10 @@ describe("entitlement-bundles", () => {
 
   test("get/add/replace/delete", async () => {
     srv = startServer([
-      { method: "GET", path: `${GOV_V1}/entitlement-bundles/b1`, body: bundle },
+      // a plain GET omits entitlements; only ?include=full_entitlements returns them
+      { method: "GET", path: `${GOV_V1}/entitlement-bundles/b1`, handler: (_req, url) => Response.json(url.searchParams.get("include") === "full_entitlements"
+        ? { ...bundle, entitlements: [{ id: "e1", name: "Role", values: [{ id: "v1", name: "admin", created: "x" }] }] }
+        : bundle) },
       { method: "POST", path: `${GOV_V1}/entitlement-bundles`, status: 201, body: bundle },
       { method: "PUT", path: `${GOV_V1}/entitlement-bundles/b1`, body: bundle },
       { method: "DELETE", path: `${GOV_V1}/entitlement-bundles/b1` },
@@ -180,6 +183,10 @@ describe("entitlement-bundles", () => {
     expect(putBody.id).toBe("b1");
     expect(putBody.targetResourceOrn).toBe("orn:okta:resource:x");
     expect(putBody.target).toEqual({ type: "APP", externalId: "0oa1" });
+    // a plain GET omits entitlements; the hook re-fetches with include=full_entitlements and
+    // reduces to the writable { id, values: [{ id }] } shape
+    expect(srv.calls.at(-2)!.query).toEqual({ include: "full_entitlements" });
+    expect(putBody.entitlements).toEqual([{ id: "e1", values: [{ id: "v1" }] }]);
     await runTest(["gov", "entitlement-bundles", "delete", "b1"], t.ctx);
     expect(t.out.at(-1)).toBe("entitlement bundle b1 (Sales bundle) deleted\n");
   });

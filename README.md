@@ -351,6 +351,60 @@ covered - this CLI is an admin tool.
   call needs to be assigned the Okta Access Requests app before `gov request-types`/
   `gov requests` will answer, even with a valid API token.
 
+## MCP server
+
+`okta-cli mcp` exposes every CLI command as an MCP tool (spec 2025-11-25), over streamable
+HTTP or stdio. The catalog is generated from the command tree at startup - each leaf command
+becomes one tool named after its path with `_` separators (`users list` -> `users_list`,
+`gov entitlement-bundles get` -> `governance_entitlement_bundles_get`). A tool call runs
+through the same code path as the CLI (auth, lookups, pagination, `--json` formatting, error
+mapping), so behavior matches the command line exactly.
+
+```sh
+okta-cli mcp tools -j                       # list the generated catalog
+okta-cli mcp serve --read-only              # streamable HTTP on 127.0.0.1:8000/mcp
+okta-cli mcp stdio --read-only              # stdio transport, for local MCP clients
+```
+
+Add it to Claude Code as a stdio server:
+
+```sh
+claude mcp add okta -- okta-cli mcp stdio --read-only
+```
+
+**Filters:** `--include <glob>` / `--exclude <glob>` (repeatable, e.g. `--include users_*`)
+narrow the catalog by tool name; also settable via `OKTA_MCP_INCLUDE`/`OKTA_MCP_EXCLUDE`
+(comma-separated). `serve`'s `--host`/`--port`/`--path` default to `OKTA_MCP_HOST`
+(`127.0.0.1`), `OKTA_MCP_PORT` (`8000`), and `/mcp`.
+
+**Read-only mode** (`--read-only`, or `OKTA_MCP_READ_ONLY=1`) is enforced twice: the catalog
+served to the client only lists tools classified as read-only (no `--json` option, or a verb
+like `delete`/`update`/`set` in the command name), and independently every non-`GET` HTTP
+request is refused at the Okta client regardless of which tool was called - a compromised or
+misclassified tool cannot mutate data. `--no-read-only` overrides `OKTA_MCP_READ_ONLY=1` from
+the command line - an explicit flag always wins over the environment default.
+
+`FILE:` body prefixes and other local-file options are rejected in MCP mode; a tool call never
+reads a file on the server's filesystem.
+
+**No auth on `/mcp`:** `mcp serve`'s HTTP endpoint has no authentication of its own - anyone who
+can reach the port can call it. The Dockerfile binds `0.0.0.0` and defaults to read-only, but it
+must still sit behind something that authenticates (the Runlayer gateway, a sidecar, etc.); don't
+expose it directly to the internet.
+
+**Deploying to Runlayer:** build the connector from the repo's `Dockerfile` (`bun build
+--compile` into a Debian slim image, entrypoint `okta-cli`, default command `mcp serve`), then:
+
+```sh
+uvx runlayer deploy pull --deployment-id <id>    # writes an `id` into a fresh manifest
+cp runlayer.yaml.example runlayer.yaml           # fill in the `id`, then edit env below
+uvx runlayer deploy --config runlayer.yaml
+```
+
+Credentials (`OKTA_URL` + `OKTA_TOKEN`, or the OAuth service-app variables from
+[Authentication](#authentication)) are set as env vars on the deployment, never baked into the
+image or the manifest.
+
 ## References
 
 This project uses a few nice other projects:

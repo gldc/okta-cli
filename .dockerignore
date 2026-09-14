@@ -5,3 +5,5 @@ tests
 testdata
 docs
 okta-dump*
+.env
+okta-cli-*

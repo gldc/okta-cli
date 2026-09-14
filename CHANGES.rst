@@ -1,3 +1,21 @@
+v19.6.0
+=======
+
+* New: ``okta-cli mcp`` exposes every CLI command as an MCP tool (spec 2025-11-25) - a
+  streamable HTTP server (``mcp serve``) and a stdio transport (``mcp stdio``); the tool
+  catalog is generated from the command tree at startup, one tool per leaf command
+  (``users_list``, ``governance_entitlement_bundles_get``, ...), and each call runs through
+  the same ``runCli`` path as the command line (auth, pagination, ``--json`` formatting,
+  error mapping)
+* ``mcp tools`` lists the generated catalog; ``--include``/``--exclude`` globs (also
+  ``OKTA_MCP_INCLUDE``/``OKTA_MCP_EXCLUDE``) filter it by tool name
+* ``--read-only``/``OKTA_MCP_READ_ONLY=1`` restricts the served catalog to read-only tools and
+  independently refuses every non-``GET`` request at the Okta client, regardless of which tool
+  was invoked
+* ``FILE:`` body prefixes and other local-file options are rejected in MCP mode
+* New multi-stage ``Dockerfile`` (compiled binary, non-root, defaults to ``mcp serve``) and
+  ``runlayer.yaml.example`` for deploying the server to Runlayer Deploy
+
 v19.5.0
 =======
 

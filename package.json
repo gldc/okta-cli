@@ -1,10 +1,12 @@
 {
   "name": "okta-cli",
-  "version": "19.5.0",
+  "version": "19.6.0",
   "description": "An Okta command line interface for scripting and quickly performing routine tasks",
   "license": "MIT",
   "type": "module",
-  "bin": { "okta-cli": "src/main.ts" },
+  "bin": {
+    "okta-cli": "src/main.ts"
+  },
   "scripts": {
     "start": "bun src/main.ts",
     "typecheck": "tsc -p .",
@@ -14,6 +16,7 @@
     "build": "bun build --compile src/main.ts --outfile dist/okta-cli"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "commander": "^15.0.0",
     "papaparse": "^5.7.0",
     "read-excel-file": "^9.3.10",

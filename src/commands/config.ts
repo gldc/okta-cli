@@ -1,8 +1,15 @@
 import type { Command } from "commander";
+import { profileKind } from "../cli/client-factory";
 import type { Ctx } from "../cli/context";
 import { action, subgroup } from "../cli/options";
-import { type Config, configPath, inferDefault, loadConfig, saveConfig } from "../config";
+import { type Config, type Profile, configPath, inferDefault, loadConfig, saveConfig } from "../config";
 import { ExitError } from "../okta/errors";
+
+// SSWS shows `***<last4>` (today's behaviour, unchanged); OAuth has no token to mask, so it
+// shows the client id instead.
+function authColumn(p: Profile): string {
+  return profileKind(p) === "oauth" ? `oauth:${(p as { clientId: string }).clientId}` : `***${(p as { token: string }).token.slice(-4)}`;
+}
 
 export function registerConfig(program: Command, ctx: Ctx): void {
   const g = subgroup(program, "config", "Manage okta-cli configuration");
@@ -40,7 +47,7 @@ export function registerConfig(program: Command, ctx: Ctx): void {
     .action(action(ctx, async () => {
       const cfg = await loadConfig(path());
       return Object.entries(cfg.profiles)
-        .map(([name, p]) => `${name}  ${p.url}  ***${p.token.slice(-4)}${name === cfg.default ? "  (CURRENT)" : ""}`)
+        .map(([name, p]) => `${name}  ${p.url}  ${authColumn(p)}${name === cfg.default ? "  (CURRENT)" : ""}`)
         .join("\n");
     }, { client: false }));
 

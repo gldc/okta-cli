@@ -232,6 +232,19 @@ export class OAuthTokenSource {
     return this.profile.dpop ? getDpopKeyMaterial() : undefined;
   }
 
+  // Forces a fresh token fetch, bypassing the in-memory memo and any on-disk cache - used by
+  // OktaClient when the resource server rejects the current access token as invalid (401
+  // invalid_token), which can happen before our own expiry-based refresh would have kicked in.
+  async forceRefresh(): Promise<OAuthToken> {
+    this.memo = undefined;
+    if (!this.inflight) {
+      this.inflight = this.fetchToken(this.now()).finally(() => {
+        this.inflight = undefined;
+      });
+    }
+    return this.inflight;
+  }
+
   private async fetchToken(nowMs: number): Promise<OAuthToken> {
     const tokenEndpoint = `${this.profile.url.replace(/\/+$/, "")}/oauth2/v1/token`;
     const result = await this.requestToken(tokenEndpoint, nowMs);

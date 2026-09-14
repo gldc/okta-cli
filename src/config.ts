@@ -3,7 +3,20 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { ExitError } from "./okta/errors";
 
-export interface Profile { url: string; token: string }
+export interface SswsProfile { url: string; token: string }
+export interface OAuthProfileConfig {
+  url: string;
+  auth: "oauth";
+  clientId: string;
+  kid?: string;
+  // A JWK object, a PEM string, or a path to either (privateKeyFile) - resolved at client-build
+  // time (src/cli/client-factory.ts), not here, so profile listing/editing never needs the key.
+  privateKey?: JsonWebKey | string;
+  privateKeyFile?: string;
+  scopes: string[];
+  dpop?: boolean;
+}
+export type Profile = SswsProfile | OAuthProfileConfig;
 export interface Config { profiles: Record<string, Profile>; default?: string }
 
 export function configPath(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform, home: string = homedir()): string {
@@ -44,5 +57,18 @@ export function resolveProfile(cfg: Config): Profile {
 
 export async function activeProfile(env: NodeJS.ProcessEnv = process.env): Promise<Profile> {
   if (env.OKTA_URL && env.OKTA_TOKEN) return { url: env.OKTA_URL, token: env.OKTA_TOKEN };
+  if (env.OKTA_URL && env.OKTA_CLIENT_ID && (env.OKTA_PRIVATE_KEY || env.OKTA_PRIVATE_KEY_FILE) && env.OKTA_SCOPES) {
+    const profile: OAuthProfileConfig = {
+      url: env.OKTA_URL,
+      auth: "oauth",
+      clientId: env.OKTA_CLIENT_ID,
+      scopes: env.OKTA_SCOPES.split(/\s+/).filter(Boolean),
+    };
+    if (env.OKTA_KID) profile.kid = env.OKTA_KID;
+    if (env.OKTA_PRIVATE_KEY) profile.privateKey = env.OKTA_PRIVATE_KEY;
+    if (env.OKTA_PRIVATE_KEY_FILE) profile.privateKeyFile = env.OKTA_PRIVATE_KEY_FILE;
+    if (env.OKTA_DPOP === "1") profile.dpop = true;
+    return profile;
+  }
   return resolveProfile(await loadConfig(configPath(env)));
 }

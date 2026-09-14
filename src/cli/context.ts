@@ -1,5 +1,6 @@
 import { activeProfile } from "../config";
-import { OktaClient } from "../okta/client";
+import type { OktaClient } from "../okta/client";
+import { buildClient } from "./client-factory";
 
 export interface IO {
   out(text: string): void;
@@ -39,7 +40,7 @@ export function defaultCtx(): Ctx {
     now: () => new Date(),
     async getClient(verbosity) {
       const p = await activeProfile(process.env);
-      return new OktaClient(p.url, p.token, { verbosity, log: (l) => io.err(l + "\n") });
+      return buildClient(p, { verbosity, log: (l) => io.err(l + "\n") }, process.env);
     },
   };
 }

@@ -381,7 +381,8 @@ narrow the catalog by tool name; also settable via `OKTA_MCP_INCLUDE`/`OKTA_MCP_
 served to the client only lists tools classified as read-only (no `--json` option, or a verb
 like `delete`/`update`/`set` in the command name), and independently every non-`GET` HTTP
 request is refused at the Okta client regardless of which tool was called - a compromised or
-misclassified tool cannot mutate data.
+misclassified tool cannot mutate data. `--no-read-only` overrides `OKTA_MCP_READ_ONLY=1` from
+the command line - an explicit flag always wins over the environment default.
 
 `FILE:` body prefixes and other local-file options are rejected in MCP mode; a tool call never
 reads a file on the server's filesystem.

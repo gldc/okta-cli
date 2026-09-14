@@ -18,6 +18,10 @@ export interface ToolOpt {
   description: string;
   default?: unknown;
   isPath?: boolean; // a local server-filesystem path; rejected in MCP mode
+  // Set when a leaf declares both `--x` and `--no-x` for the same attr (e.g. users_add's
+  // --activate/--no-activate): the two commander Options are merged into one boolean
+  // property, and buildArgv emits `long` for true, `negatedLong` for false.
+  negatedLong?: string;
 }
 
 export interface ToolDef {
@@ -44,7 +48,7 @@ export const WRITE_VERBS = [
   "execute", "run", "retry", "enable", "disable", "promote", "opt", "verify", "send", "test", "cancel", "approve",
   "deny", "reassign", "resend", "close", "reopen", "launch", "end", "start", "stop", "move", "clone", "trigger",
   "invoke", "register", "deregister", "enroll", "unenroll", "grant", "exchange", "migrate", "rename", "preview",
-  "dr", "failover", "change", "forgot",
+  "dr", "failover", "change", "forgot", "extend", "unpublish", "resolve", "summary", "refresh", "map",
 ];
 
 const DESTRUCTIVE_RE = /(^|-)(delete|remove|removeuser|revoke|deactivate|suspend|clear|expire|unlink|unassign|unsubscribe|reset|cancel|deny|end|stop|unenroll|deregister)($|-)/;
@@ -52,7 +56,9 @@ const DESTRUCTIVE_RE = /(^|-)(delete|remove|removeuser|revoke|deactivate|suspend
 // Options that always write, regardless of leaf name: a real HTTP body, a field-setter, or a
 // local file/certificate upload (which also has to be rejected as a path in MCP mode, see
 // FILE_PATH_OPT_LONGS below). `--delete` (theme assets) is a mutation with no --file present.
-const NEVER_READ_ONLY_OPT_LONGS = new Set(["--body", "--set", "--file", "--cert", "--key", "--chain", "--delete"]);
+// `--show`/`--hide` (org footer) toggle a server-side setting via POST with no --body/--set
+// present - the leaf name ("footer") carries no write verb, so the option itself has to force it.
+const NEVER_READ_ONLY_OPT_LONGS = new Set(["--body", "--set", "--file", "--cert", "--key", "--chain", "--delete", "--show", "--hide"]);
 
 // Options whose value is a path read from the server's filesystem; rejected outright in MCP
 // mode (src/mcp/invoke.ts) rather than passed through.
@@ -82,7 +88,7 @@ function optKind(opt: Command["options"][number]): ToolOpt["kind"] {
   if (opt.negate) return "boolean";
   if (!opt.required && !opt.optional) return "boolean";
   const parseArgName = (opt.parseArg as { name?: string } | undefined)?.name;
-  if (parseArgName === "int") return "integer";
+  if (parseArgName === "int" || parseArgName === "limit" || parseArgName === "pageSize") return "integer";
   if (parseArgName === "collect" || parseArgName === "collectScope" || opt.variadic) return "string[]";
   return "string";
 }
@@ -109,8 +115,34 @@ function schemaForOpt(opt: ToolOpt): Record<string, unknown> {
       };
   }
   if (opt.choices) schema.enum = opt.choices;
+  if (opt.default !== undefined) schema.default = opt.default;
   schema.description = opt.isPath ? `${opt.description} Rejected in MCP mode: local file paths are not readable by a tool call.` : opt.description;
   return schema;
+}
+
+// A leaf that declares both `--x` (positive) and `--no-x` (negate) for the same attributeName
+// produces two commander Options sharing one schema property; the second silently overwrote the
+// first (usually losing the positive one's description, since --no-x rarely has its own). Merge
+// them into a single boolean ToolOpt that remembers both flags.
+function mergeNegatedPairs(opts: ToolOpt[]): ToolOpt[] {
+  const byAttr = new Map<string, ToolOpt[]>();
+  for (const o of opts) byAttr.set(o.attr, [...(byAttr.get(o.attr) ?? []), o]);
+
+  const merged: ToolOpt[] = [];
+  const seen = new Set<string>();
+  for (const o of opts) {
+    if (seen.has(o.attr)) continue;
+    seen.add(o.attr);
+    const group = byAttr.get(o.attr)!;
+    const pos = group.find((g) => g.kind === "boolean" && !g.negate);
+    const neg = group.find((g) => g.kind === "boolean" && g.negate);
+    if (group.length === 2 && pos && neg) {
+      merged.push({ ...pos, negatedLong: neg.long, description: pos.description || neg.description });
+    } else {
+      merged.push(...group);
+    }
+  }
+  return merged;
 }
 
 function buildOpts(leaf: Command): ToolOpt[] {
@@ -137,7 +169,7 @@ function buildOpts(leaf: Command): ToolOpt[] {
     }
     out.push(toolOpt);
   }
-  return out;
+  return mergeNegatedPairs(out);
 }
 
 function buildArgs(leaf: Command, opts: ToolOpt[]): ToolArg[] {

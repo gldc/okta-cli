@@ -81,12 +81,17 @@ describe("mcp stdio transport", () => {
     await proc.stdin.end();
 
     const stdoutP = new Response(proc.stdout).text();
+    const stderrP = new Response(proc.stderr).text();
     const exitCode = await Promise.race([
       proc.exited,
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out waiting for exit")), 5000)),
     ]);
     expect(exitCode).toBe(0);
     const stdout = await stdoutP;
-    expect(stdout).toContain('"result"');
+    const lines = stdout.split("\n").filter((l) => l.length > 0);
+    expect(lines).toHaveLength(1);
+    const response = JSON.parse(lines[0]!);
+    expect(response.result.serverInfo.name).toBe("okta-cli");
+    expect(await stderrP).toContain("okta-cli mcp: serving");
   }, 10000);
 });

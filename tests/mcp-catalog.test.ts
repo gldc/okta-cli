@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { buildProgram } from "../src/cli/program";
 import { testCtx } from "./fixtures/ctx";
 import { buildCatalog, filterCatalog, globToRegExp, toolName } from "../src/mcp/catalog";
+import { buildArgv } from "../src/mcp/invoke";
 
 const program = buildProgram(testCtx("http://127.0.0.1:1").ctx);
 const defs = buildCatalog(program);
@@ -63,12 +64,38 @@ describe("mcp catalog", () => {
     const mutating = [
       "users_change_password", "users_forgot_password", "users_change_recovery_question",
       "apps_addgroup", "brands_theme_favicon", "brands_theme_background", "brands_theme_logo",
+      "org_support_extend", "governance_tasks_resolve", "sessions_refresh",
+      "governance_request_types_unpublish", "governance_security_access_reviews_access_summary",
+      "governance_security_access_reviews_summary", "policies_map",
     ];
     for (const name of mutating) {
       const d = byName.get(name)!;
       expect(d.readOnly).toBe(false);
       expect(d.annotations.readOnlyHint).toBe(false);
     }
+  });
+  test("org footer mutates the dashboard footer setting via --show/--hide, not a write verb", () => {
+    const d = byName.get("org_footer")!;
+    expect(d.readOnly).toBe(false);
+    expect(d.annotations.readOnlyHint).toBe(false);
+  });
+  test("logs_list --limit/--page-size are integers, not strings", () => {
+    const d = byName.get("logs_list")!;
+    const p = d.inputSchema.properties as Record<string, any>;
+    expect(p.limit.type).toBe("integer");
+    expect(p.pageSize.type).toBe("integer");
+    expect(buildArgv(d, { limit: 5 })).toContain("--limit=5");
+  });
+  test("users_add merges --activate/--no-activate into one boolean property", () => {
+    const d = byName.get("users_add")!;
+    expect(d.opts.filter((o) => o.attr === "activate")).toHaveLength(1);
+    const activate = d.opts.find((o) => o.attr === "activate")!;
+    expect(activate.negatedLong).toBe("--no-activate");
+    expect(activate.description.length).toBeGreaterThan(0);
+    const p = d.inputSchema.properties as Record<string, any>;
+    expect(p.activate).toEqual({ type: "boolean", description: activate.description });
+    expect(buildArgv(d, { activate: true })).toContain("--activate");
+    expect(buildArgv(d, { activate: false })).toContain("--no-activate");
   });
   test("no positional arg's schema key collides with an option attr", () => {
     for (const d of defs) {
@@ -79,6 +106,22 @@ describe("mcp catalog", () => {
     expect(byName.get("groups_role_target_add")!.args[0]!.key).toBe("arg_group");
     expect(byName.get("groups_role_target_delete")!.args[0]!.key).toBe("arg_group");
     expect(byName.get("auth_servers_associated_add")!.args[0]!.key).toBe("arg_server");
+  });
+  test("buildArgv emits the disambiguated positional's value exactly once", () => {
+    const add = byName.get("groups_role_target_add")!;
+    const argv1 = buildArgv(add, { arg_group: "Everyone", assignmentId: "ra1", group: "OtherGroup" });
+    expect(argv1.filter((t) => t === "Everyone")).toHaveLength(1);
+    expect(argv1).toContain("--group=OtherGroup");
+
+    const del = byName.get("groups_role_target_delete")!;
+    const argv2 = buildArgv(del, { arg_group: "Everyone", assignmentId: "ra1", group: "OtherGroup" });
+    expect(argv2.filter((t) => t === "Everyone")).toHaveLength(1);
+    expect(argv2).toContain("--group=OtherGroup");
+
+    const assoc = byName.get("auth_servers_associated_add")!;
+    const argv3 = buildArgv(assoc, { arg_server: "server1", server: "server2" });
+    expect(argv3.filter((t) => t === "server1")).toHaveLength(1);
+    expect(argv3).toContain("--server=server2");
   });
   test("local file paths are marked and rejected in the schema description", () => {
     const d = byName.get("apps_logo")!;

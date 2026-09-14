@@ -10,6 +10,7 @@ import { VERSION } from "../version";
 function addCatalogOptions(cmd: Command): Command {
   return cmd
     .option("--read-only", "Only list/serve read-only tools; refuse every non-GET request")
+    .option("--no-read-only", "Override OKTA_MCP_READ_ONLY=1 from the command line")
     .option("--include <glob>", "Only include tools matching this glob (repeatable)", collect, [])
     .option("--exclude <glob>", "Exclude tools matching this glob (repeatable)", collect, []);
 }
@@ -51,8 +52,10 @@ export function registerMcp(parent: Command, ctx: Ctx, buildProgramFn: () => Com
       const path = opts.path ?? "/mcp";
       let clientP: Promise<OktaClient> | undefined;
       const getClient = () => {
-        clientP ??= ctx.getClient(0).then((c) => (filter.readOnly ? readOnlyClient(c) : c));
-        clientP.catch(() => { clientP = undefined; });
+        if (!clientP) {
+          clientP = ctx.getClient(0).then((c) => (filter.readOnly ? readOnlyClient(c) : c));
+          clientP.catch(() => { clientP = undefined; });
+        }
         return clientP;
       };
       const deps = {
@@ -77,8 +80,10 @@ export function registerMcp(parent: Command, ctx: Ctx, buildProgramFn: () => Com
       const filter = resolvedFilter(ctx, opts);
       let clientP: Promise<OktaClient> | undefined;
       const getClient = () => {
-        clientP ??= ctx.getClient(0).then((c) => (filter.readOnly ? readOnlyClient(c) : c));
-        clientP.catch(() => { clientP = undefined; });
+        if (!clientP) {
+          clientP = ctx.getClient(0).then((c) => (filter.readOnly ? readOnlyClient(c) : c));
+          clientP.catch(() => { clientP = undefined; });
+        }
         return clientP;
       };
       const deps = {

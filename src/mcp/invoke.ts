@@ -1,4 +1,3 @@
-import { runCli } from "../cli/program";
 import { ExitSignal, type Ctx } from "../cli/context";
 import { OktaClient, type Method, type RequestOptions } from "../okta/client";
 import { ExitError } from "../okta/errors";
@@ -24,6 +23,16 @@ export interface InvokeDeps {
   getClient: () => Promise<OktaClient>;
   env: NodeJS.ProcessEnv;
   now?: () => Date;
+  // `src/cli/program.ts` imports `registerMcp` (src/commands/mcp.ts), which reaches this module -
+  // a static top-level import of `runCli` back from program.ts would be a cycle. Callers may pass
+  // it explicitly; otherwise it's loaded lazily on first use.
+  runCli?: (argv: string[], ctx: Ctx) => Promise<number>;
+}
+
+let cachedRunCli: ((argv: string[], ctx: Ctx) => Promise<number>) | undefined;
+async function defaultRunCli(argv: string[], ctx: Ctx): Promise<number> {
+  cachedRunCli ??= (await import("../cli/program")).runCli;
+  return cachedRunCli(argv, ctx);
 }
 
 export interface InvokeResult {
@@ -37,6 +46,7 @@ function optionTokens(def: ToolDef, input: Record<string, unknown>, opt: ToolDef
   if (v === undefined || v === null) return [];
   switch (opt.kind) {
     case "boolean":
+      if (opt.negatedLong) return v === true ? [opt.long] : v === false ? [opt.negatedLong] : [];
       if (opt.negate) return v === false ? [opt.long] : [];
       return v === true ? [opt.long] : [];
     case "string":
@@ -122,7 +132,7 @@ export async function invokeTool(def: ToolDef, input: Record<string, unknown>, d
   };
 
   try {
-    const code = await runCli(argv, ctx);
+    const code = await (deps.runCli ?? defaultRunCli)(argv, ctx);
     return { code, stdout: out.join(""), stderr: err.join("") };
   } catch (e) {
     return { code: 254, stdout: out.join(""), stderr: String(e) };

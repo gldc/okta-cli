@@ -30,6 +30,13 @@ describe("mcp tools", () => {
     expect(stdout).toContain("groups_list");
     expect(err.join("")).not.toContain("never filled or non-existant");
   });
+  test("--no-read-only on the command line overrides OKTA_MCP_READ_ONLY=1", async () => {
+    const { ctx, out } = testCtx("http://127.0.0.1:1");
+    ctx.env = { OKTA_MCP_READ_ONLY: "1", OKTA_MCP_INCLUDE: "users_*" };
+    expect(await runTest(["mcp", "tools", "-j", "--no-read-only"], ctx)).toBe(0);
+    const t = JSON.parse(out.join(""));
+    expect(t.some((x: any) => x.readOnly === false)).toBe(true);
+  });
   test("mcp serve is registered with host/port/path options", async () => {
     const { ctx, out, err } = testCtx("http://127.0.0.1:1");
     await runTest(["mcp", "serve", "--help"], ctx);

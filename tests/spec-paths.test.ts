@@ -18,6 +18,12 @@ describe("spec paths", () => {
     expect(knownPath("/okta-personal-settings/api/v1/edit-feature")).toBe(true);
     expect(knownPath("/webauthn-registration/api/v1/enroll")).toBe(true);
   });
+  test("governance paths (merged from gov-spec-paths.json) are matched without an /api/v1 prefix", () => {
+    expect(knownPath("/governance/api/v1/campaigns")).toBe(true);
+    expect(knownPath("/governance/api/v2/security-access-reviews/x/accesses/y/sub-accesses")).toBe(true);
+    expect(knownPath("/governance/api/v2/resources/orn%3Aokta%3Aidp%3Ax%3Aapps%3Aoidc_client%3Ay/entitlement-settings")).toBe(true);
+    expect(knownPath("/governance/api/v1/nope")).toBe(false);
+  });
   test("schema types are usable", () => {
     const u: Schema<"User"> = { id: "x", profile: { login: "a@b" } } as Schema<"User">;
     expect(u.id).toBe("x");

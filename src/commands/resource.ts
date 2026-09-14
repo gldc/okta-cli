@@ -1,6 +1,6 @@
 import { Option, type Command } from "commander";
 import type { Ctx } from "../cli/context";
-import { action, addOutputOptions, addVerbose, bodyFromOpts, bodyOpts, subgroup } from "../cli/options";
+import { action, addOutputOptions, addVerbose, bodyFromOpts, bodyOpts, int, subgroup } from "../cli/options";
 import { deepMerge, getDotted, isPlainObject } from "../lib/dotted";
 import { selectField } from "../lib/lookup";
 import type { OktaClient, Query } from "../okta/client";
@@ -10,6 +10,17 @@ export interface ListOption { flags: string; param: string; description: string;
 export interface ResourceSpec {
   name: string; description: string; path: string; singular: string; nameField: string; defaultFields: string;
   lifecycle?: boolean; deletable?: boolean; replaceable?: boolean; creatable?: boolean; listKey?: string; listOptions?: ListOption[]; sortBy?: string; idField?: string;
+  // API base other than /api/v1 (e.g. "/governance/api/v1"), passed through to every `client`
+  // call this spec drives.
+  basePath?: string;
+  // The list endpoint 400s without a `filter` query parameter. Swaps `list`'s `-f/--filter`
+  // option for a commander requiredOption with no default value (a default would silently mask
+  // the 400), and makes `resourceGet`'s by-id-404 fallback throw instead of issuing a filterless
+  // list.
+  filterRequired?: boolean;
+  // Adds a `--limit <n>` option to `list` that caps `resourceList`'s result client-side
+  // (`getAll`'s `max`) - never sent as a `limit` query parameter.
+  limitOption?: boolean;
   // Extra top-level read-only fields to strip from the GET representation before it's used as
   // the PUT merge base in `replace` (on top of the fields every resource strips - see
   // REPLACE_OMIT_DEFAULT below).
@@ -53,8 +64,8 @@ function addListOptions(cmd: Command, spec: ResourceSpec, forList = false): Comm
 const nameOf = (spec: ResourceSpec, item: any) => String(getDotted(item, spec.nameField) ?? "");
 const idOf = (spec: ResourceSpec, item: any) => String(getDotted(item, spec.idField ?? "id") ?? "");
 
-export async function resourceList(client: OktaClient, spec: ResourceSpec, partial: string | undefined, query: Query = {}): Promise<any[]> {
-  let items: any[] = await client.getAll(spec.path, { query, listKey: spec.listKey });
+export async function resourceList(client: OktaClient, spec: ResourceSpec, partial: string | undefined, query: Query = {}, max?: number): Promise<any[]> {
+  let items: any[] = await client.getAll(spec.path, { query, listKey: spec.listKey, basePath: spec.basePath, max });
   if (partial) items = items.filter(selectField(spec.nameField, partial));
   const key = spec.sortBy ?? spec.nameField;
   return items.sort((a, b) => {
@@ -66,8 +77,13 @@ export async function resourceList(client: OktaClient, spec: ResourceSpec, parti
 }
 
 export async function resourceGet(client: OktaClient, spec: ResourceSpec, nameOrId: string, query: Query = {}): Promise<any> {
-  try { return await client.get(`${spec.path}/${encodeURIComponent(nameOrId)}`); }
-  catch (e) { if (!(e instanceof OktaApiError)) throw e; }
+  try { return await client.json("GET", `${spec.path}/${encodeURIComponent(nameOrId)}`, { basePath: spec.basePath }); }
+  catch (e) {
+    if (!(e instanceof OktaApiError)) throw e;
+    // A filter-required list 400s without one, so a filterless fallback list is never useful -
+    // fail with a clear message instead (see ResourceSpec.filterRequired).
+    if (spec.filterRequired) throw new ExitError(`${spec.singular} must be given by id (${spec.path} requires a filter, so name lookup isn't possible).`);
+  }
   const matches = await resourceList(client, spec, nameOrId, query);
   if (matches.length > 1) throw new ExitError(`Name for ${spec.singular} must be unique. (found ${matches.length} matches).`);
   if (matches.length === 0) throw new ExitError(`No matching ${spec.singular} found.`);
@@ -93,13 +109,13 @@ export async function publishCsr(client: OktaClient, path: string, file: string,
 // Resolves a nested (non-top-level) resource by id, falling back to a unique substring
 // match on `nameField` across the collection at `path` - shared by scopes/claims/policies/rules
 // (auth-servers.ts) and policy rules (policies.ts).
-export async function getNested(client: OktaClient, path: string, arg: string, nameField: string, singular: string): Promise<any> {
+export async function getNested(client: OktaClient, path: string, arg: string, nameField: string, singular: string, basePath?: string): Promise<any> {
   try {
-    return await client.get(`${path}/${encodeURIComponent(arg)}`);
+    return await client.json("GET", `${path}/${encodeURIComponent(arg)}`, { basePath });
   } catch (e) {
     if (!(e instanceof OktaApiError)) throw e;
   }
-  const items: any[] = await client.getAll(path);
+  const items: any[] = await client.getAll(path, { basePath });
   const matches = items.filter(selectField(nameField, arg));
   if (matches.length > 1) throw new ExitError(`Name for ${singular} must be unique. (found ${matches.length} matches).`);
   if (matches.length === 0) throw new ExitError(`No matching ${singular} found.`);
@@ -110,13 +126,17 @@ export function defineResource(parent: Command, ctx: Ctx, spec: ResourceSpec): C
   const g = subgroup(parent, spec.name, spec.description);
   const out = (cmd: Command, forList = false) => addOutputOptions(addVerbose(addListOptions(cmd, spec, forList)), spec.defaultFields);
 
-  out(g.command("list").description(`List ${spec.singular}s (optional argument: substring of ${spec.nameField})`).argument("[partial_name]")
-    .option("-f, --filter <expr>", "Okta filter expression").option("-q, --query <q>", "Okta 'q' query"), true)
+  const listCmd = g.command("list").description(`List ${spec.singular}s (optional argument: substring of ${spec.nameField})`).argument("[partial_name]");
+  if (spec.filterRequired) listCmd.requiredOption("-f, --filter <expr>", "Okta SCIM filter expression (required by this endpoint)");
+  else listCmd.option("-f, --filter <expr>", "Okta filter expression");
+  listCmd.option("-q, --query <q>", "Okta 'q' query");
+  if (spec.limitOption) listCmd.option("--limit <n>", "Maximum number of results (client-side cap; never sent as a query parameter)", int);
+  out(listCmd, true)
     .action(action(ctx, (client, opts, partial?: string) => {
       const query = lookupQuery(spec, opts);
       if (opts.filter) query.filter = opts.filter;
       if (opts.query) query.q = opts.query;
-      return resourceList(client, spec, partial, query);
+      return resourceList(client, spec, partial, query, opts.limit);
     }));
 
   out(g.command("get").description(`Get one ${spec.singular} by id or unique ${spec.nameField} substring`).argument("<name-or-id>"))
@@ -124,7 +144,7 @@ export function defineResource(parent: Command, ctx: Ctx, spec: ResourceSpec): C
 
   if (spec.creatable !== false) {
     out(bodyOpts(g.command("add").description(`Create a ${spec.singular} from a JSON body (-b) and/or dotted assignments (-s)`)))
-      .action(action(ctx, (client, opts) => client.json("POST", spec.path, { body: bodyFromOpts(opts) })));
+      .action(action(ctx, (client, opts) => client.json("POST", spec.path, { body: bodyFromOpts(opts), basePath: spec.basePath })));
   }
 
   if (spec.replaceable !== false) {
@@ -137,7 +157,7 @@ export function defineResource(parent: Command, ctx: Ctx, spec: ResourceSpec): C
           body = deepMerge(base, body);
         }
         if (spec.beforeReplace) body = await spec.beforeReplace(client, existing, body as Record<string, unknown>);
-        return client.json("PUT", `${spec.path}/${idOf(spec, existing)}`, { body });
+        return client.json("PUT", `${spec.path}/${idOf(spec, existing)}`, { body, basePath: spec.basePath });
       }));
   }
 
@@ -146,7 +166,7 @@ export function defineResource(parent: Command, ctx: Ctx, spec: ResourceSpec): C
       .action(action(ctx, async (client, opts, nameOrId) => {
         const item = await resourceGet(client, spec, nameOrId, lookupQuery(spec, opts));
         const id = idOf(spec, item);
-        await client.json("DELETE", `${spec.path}/${id}`);
+        await client.json("DELETE", `${spec.path}/${id}`, { basePath: spec.basePath });
         return `${spec.singular} ${id} (${nameOf(spec, item)}) deleted`;
       }));
   }
@@ -157,7 +177,7 @@ export function defineResource(parent: Command, ctx: Ctx, spec: ResourceSpec): C
         .action(action(ctx, async (client, opts, nameOrId) => {
           const item = await resourceGet(client, spec, nameOrId, lookupQuery(spec, opts));
           const id = idOf(spec, item);
-          const rv = await client.json("POST", `${spec.path}/${id}/lifecycle/${verb}`);
+          const rv = await client.json("POST", `${spec.path}/${id}/lifecycle/${verb}`, { basePath: spec.basePath });
           return rv ?? `${spec.singular} ${id} (${nameOf(spec, item)}) ${verb}d`;
         }));
     }

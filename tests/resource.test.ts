@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { Command } from "commander";
+import { Command, CommanderError } from "commander";
 import { defineResource, type ResourceSpec } from "../src/commands/resource";
 import { buildProgram } from "../src/cli/program";
 import { knownPath } from "../src/okta/spec-paths";
@@ -18,6 +18,20 @@ async function run(argv: string[], t: ReturnType<typeof testCtx>) {
   const p = buildProgram(t.ctx);
   defineResource(p, t.ctx, spec);
   try { await p.parseAsync(argv, { from: "user" }); return 0; } catch (e) { if (e instanceof ExitSentinel) return e.code; throw e; }
+}
+
+// Like run(), but for a throwaway spec passed in (used by the basePath/filterRequired/limitOption
+// tests below) - also catches the CommanderError a missing requiredOption throws, mirroring
+// runCli's handling in src/cli/program.ts.
+async function runG(argv: string[], t: ReturnType<typeof testCtx>, s: ResourceSpec) {
+  const p = buildProgram(t.ctx);
+  defineResource(p, t.ctx, s);
+  try { await p.parseAsync(argv, { from: "user" }); return 0; }
+  catch (e) {
+    if (e instanceof ExitSentinel) return e.code;
+    if (e instanceof CommanderError) return e.exitCode;
+    throw e;
+  }
 }
 
 describe("defineResource", () => {
@@ -112,5 +126,94 @@ describe("defineResource", () => {
     expect(await run(["test-zones", "get", "z1"], t)).toBe(255);
     expect(t.err.join("")).toContain("COMMUNICATION_ERROR");
     expect(srv.calls.length).toBe(1);
+  });
+});
+
+describe("ResourceSpec.basePath", () => {
+  const govSpec: ResourceSpec = { name: "gov-things", description: "Gov things", path: "/gov-things", basePath: "/governance/api/v1", singular: "gov thing", nameField: "name", listKey: "data", defaultFields: "id,name" };
+  const govItem = { id: "g1", name: "Thing" };
+
+  test("list/get/add/replace/delete all hit the spec's basePath, not /api/v1", async () => {
+    srv = startServer([
+      { method: "GET", path: "/governance/api/v1/gov-things", body: { data: [govItem] } },
+      { method: "GET", path: "/governance/api/v1/gov-things/g1", body: govItem },
+      { method: "POST", path: "/governance/api/v1/gov-things", body: { id: "g2", name: "New" } },
+      { method: "PUT", path: "/governance/api/v1/gov-things/g1", body: { ...govItem, name: "Renamed" } },
+      { method: "DELETE", path: "/governance/api/v1/gov-things/g1" },
+    ]);
+    const t = testCtx(srv.url);
+    await runG(["gov-things", "list"], t, govSpec);
+    expect(srv.calls.at(-1)!.path).toBe("/governance/api/v1/gov-things");
+    await runG(["gov-things", "get", "g1"], t, govSpec);
+    expect(srv.calls.at(-1)!.path).toBe("/governance/api/v1/gov-things/g1");
+    await runG(["gov-things", "add", "-s", "name=New"], t, govSpec);
+    expect(srv.calls.at(-1)!.path).toBe("/governance/api/v1/gov-things");
+    await runG(["gov-things", "replace", "g1", "-s", "name=Renamed"], t, govSpec);
+    expect(srv.calls.at(-1)!.path).toBe("/governance/api/v1/gov-things/g1");
+    await runG(["gov-things", "delete", "g1"], t, govSpec);
+    expect(srv.calls.at(-1)).toEqual(expect.objectContaining({ method: "DELETE", path: "/governance/api/v1/gov-things/g1" }));
+  });
+
+  test("_links.next.href pagination is followed across two pages with listKey \"data\"", async () => {
+    srv = startServer([]);
+    srv.add({
+      method: "GET", path: "/governance/api/v1/gov-things",
+      handler: (_req, url) => {
+        const after = url.searchParams.get("after");
+        if (!after) return Response.json({ data: [{ id: "g1", name: "A" }], _links: { next: { href: `${srv.url}/governance/api/v1/gov-things?after=x` } } });
+        return Response.json({ data: [{ id: "g2", name: "B" }] });
+      },
+    });
+    const t = testCtx(srv.url);
+    await runG(["gov-things", "list"], t, govSpec);
+    expect(srv.calls.length).toBe(2);
+    expect(t.out.at(-1)).toBe("g1  A  \ng2  B  \n");
+  });
+});
+
+describe("ResourceSpec.filterRequired", () => {
+  const filterSpec: ResourceSpec = { name: "gov-filtered", description: "Gov filtered things", path: "/gov-filtered", basePath: "/governance/api/v1", singular: "gov filtered thing", nameField: "name", listKey: "data", defaultFields: "id,name", filterRequired: true, creatable: false, replaceable: false, deletable: false };
+
+  test("list without -f exits non-zero with commander's required-option error; no request is made", async () => {
+    srv = startServer([]);
+    const t = testCtx(srv.url);
+    expect(await runG(["gov-filtered", "list"], t, filterSpec)).not.toBe(0);
+    expect(t.err.join("")).toContain("required option");
+    expect(srv.calls.length).toBe(0);
+  });
+
+  test("list with -f sends filter as given, with no injected default", async () => {
+    srv = startServer([{ method: "GET", path: "/governance/api/v1/gov-filtered", body: { data: [] } }]);
+    const t = testCtx(srv.url);
+    await runG(["gov-filtered", "list", "-f", 'name eq "x"'], t, filterSpec);
+    expect(srv.calls.at(-1)!.query).toEqual({ filter: 'name eq "x"' });
+  });
+
+  test("get: a 404 by-id throws instead of falling back to a filterless list", async () => {
+    srv = startServer([{ method: "GET", path: "/governance/api/v1/gov-filtered/nope", status: 404, body: notFound }]);
+    const t = testCtx(srv.url);
+    expect(await runG(["gov-filtered", "get", "nope"], t, filterSpec)).not.toBe(0);
+    expect(t.err.join("")).toContain("must be given by id");
+    expect(srv.calls.length).toBe(1); // no filterless list call was made
+  });
+});
+
+describe("ResourceSpec.limitOption", () => {
+  const limitSpec: ResourceSpec = { name: "gov-limited", description: "Gov limited things", path: "/gov-limited", basePath: "/governance/api/v1", singular: "gov limited thing", nameField: "name", listKey: "data", defaultFields: "id,name", limitOption: true, creatable: false, replaceable: false, deletable: false };
+
+  test("--limit caps the result client-side across pages; the limit query parameter is never sent", async () => {
+    srv = startServer([]);
+    srv.add({
+      method: "GET", path: "/governance/api/v1/gov-limited",
+      handler: (_req, url) => {
+        const after = url.searchParams.get("after");
+        if (!after) return Response.json({ data: [{ id: "l1", name: "A" }, { id: "l2", name: "B" }], _links: { next: { href: `${srv.url}/governance/api/v1/gov-limited?after=x` } } });
+        return Response.json({ data: [{ id: "l3", name: "C" }, { id: "l4", name: "D" }] });
+      },
+    });
+    const t = testCtx(srv.url);
+    await runG(["gov-limited", "list", "--limit", "3"], t, limitSpec);
+    expect(srv.calls[0]!.query.limit).toBeUndefined();
+    expect(t.out.at(-1)).toBe("l1  A  \nl2  B  \nl3  C  \n");
   });
 });

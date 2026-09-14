@@ -9,9 +9,9 @@ import { GOV_V1 } from "./governance";
 import { defineResource, omitFields, resourceGet, type ResourceSpec } from "./resource";
 
 export const GOV_COLLECTIONS: ResourceSpec = {
-  name: "collections", description: "Collections (grouped resources with shared assignments)", path: "/collections",
+  name: "collections", description: "Collections (grouped resources with shared assignments) (v1)", path: "/collections",
   basePath: GOV_V1, singular: "collection", nameField: "name", listKey: "data",
-  defaultFields: "id,name,description,orn,counts.principalAssignmentCount", limitOption: true,
+  defaultFields: "id,name,description,orn,counts.principalAssignmentCount", limitOption: true, queryOption: false,
   // `counts` (collection-counts) only appears when --include counts is passed, so that
   // column is blank otherwise.
   listOptions: [{ flags: "--include <what>", param: "include", description: "counts (populates the counts.* columns; blank otherwise)", choices: ["counts"] }],
@@ -111,13 +111,15 @@ export function registerGovernanceCollections(g: Command, ctx: Ctx): void {
     }));
 
   addOutputOptions(addVerbose(collections.command("resources").description("List resources in a collection").argument("<collection>")
-    .addOption(new Option("--include <what>", "entitlements and/or entitlementValueCount (repeatable, comma-joined into one query parameter)").choices(["entitlements", "entitlementValueCount"]).argParser(collect).default([]))
+    .addOption(new Option("--include <what>", "entitlements and/or entitlementValueCount (repeatable)").choices(["entitlements", "entitlementValueCount"]).argParser(collect).default([]))
     .option("--limit <n>", "Maximum number of results (client-side cap; never sent as a query parameter)", int)),
   RESOURCE_FIELDS)
     .action(action(ctx, async (client, opts, collectionArg) => {
       const collection = await resourceGet(client, GOV_COLLECTIONS, collectionArg);
       const query: Query = {};
-      if (opts.include?.length) query.include = opts.include.join(",");
+      // Sent as repeated `include=` query params, not comma-joined - see the Query.include
+      // comment in src/okta/client.ts (verified live against runlayer.okta.com).
+      if (opts.include?.length) query.include = opts.include;
       return client.getAll(`/collections/${collection.id}/resources`, { basePath: GOV_V1, listKey: "data", query, max: opts.limit });
     }));
 

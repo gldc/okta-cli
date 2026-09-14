@@ -35,9 +35,9 @@ async function riskRuleReplaceBody(_client: OktaClient, existing: any, body: Rec
 }
 
 export const GOV_RISK_RULES: ResourceSpec = {
-  name: "risk-rules", description: "Separation-of-duties risk rules", path: "/risk-rules",
+  name: "risk-rules", description: "Separation-of-duties risk rules (v1)", path: "/risk-rules",
   basePath: GOV_V1, singular: "risk rule", nameField: "name", listKey: "data",
-  defaultFields: "id,name,status,type,description", limitOption: true,
+  defaultFields: "id,name,status,type,description", limitOption: true, queryOption: false,
   beforeReplace: riskRuleReplaceBody,
 };
 
@@ -58,7 +58,7 @@ function riskRuleAssessBody(opts: Record<string, any>): unknown {
 }
 
 export function registerGovernanceSettings(g: Command, ctx: Ctx): void {
-  const settings = subgroup(g, "settings", "Org-wide governance settings and certification integrations");
+  const settings = subgroup(g, "settings", "Org-wide governance settings and certification integrations (v1)");
 
   addOutputOptions(addVerbose(settings.command("get").description("Get org governance settings (delegates, governanceAI, escalations, integrations)")), null)
     .action(action(ctx, (client) => client.json("GET", "/settings", { basePath: GOV_V1 })));

@@ -19,6 +19,14 @@ describe("OktaClient", () => {
     expect(rv).toEqual([{ id: "u1" }]);
   });
 
+  test("buildUrl appends one query param per array element; scalars still use set; undefined is skipped", () => {
+    const c = new OktaClient("http://x.invalid", "tok", { sleep: noSleep });
+    const url = new URL(c.buildUrl("/things", { include: ["full_entitlements", "metadata"], filter: 'x eq "y"', skip: undefined }));
+    expect(url.searchParams.getAll("include")).toEqual(["full_entitlements", "metadata"]);
+    expect(url.searchParams.get("filter")).toBe('x eq "y"');
+    expect(url.searchParams.has("skip")).toBe(false);
+  });
+
   test("getAll follows Link next, strips _links, stops on empty page", async () => {
     srv = startServer([]);
     srv.add({ method: "GET", path: "/api/v1/groups", handler: (_req, url) => {

@@ -126,14 +126,13 @@ describe("collections", () => {
     expect(await runTest(["gov", "collections", "catalog-users", "c1", "--limit", "1"], t.ctx)).not.toBe(0);
   });
 
-  test("resources: --include repeatable, comma-joined", async () => {
-    srv = startServer([
-      { method: "GET", path: `${GOV_V1}/collections/c1`, body: collection },
-      { method: "GET", path: `${GOV_V1}/collections/c1/resources`, body: { data: [] } },
-    ]);
+  test("resources: --include repeatable, sent as two repeated params (not comma-joined - Okta 400s on that live)", async () => {
+    let includeValues: string[] = [];
+    srv = startServer([{ method: "GET", path: `${GOV_V1}/collections/c1`, body: collection }]);
+    srv.add({ method: "GET", path: `${GOV_V1}/collections/c1/resources`, handler: (_req, url) => { includeValues = url.searchParams.getAll("include"); return Response.json({ data: [] }); } });
     const t = testCtx(srv.url);
     await runTest(["gov", "collections", "resources", "c1", "--include", "entitlements", "--include", "entitlementValueCount"], t.ctx);
-    expect(srv.calls.at(-1)!.query).toEqual({ include: "entitlements,entitlementValueCount" });
+    expect(includeValues).toEqual(["entitlements", "entitlementValueCount"]);
   });
 
   test("resource-add: -s wraps a single object in an array, response unwrapped from envelope", async () => {

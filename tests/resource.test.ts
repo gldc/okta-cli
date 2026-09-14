@@ -217,3 +217,17 @@ describe("ResourceSpec.limitOption", () => {
     expect(t.out.at(-1)).toBe("l1  A  \nl2  B  \nl3  C  \n");
   });
 });
+
+describe("ResourceSpec.queryOption", () => {
+  const noQuerySpec: ResourceSpec = { name: "gov-noquery", description: "Gov no-query things", path: "/gov-noquery", basePath: "/governance/api/v1", singular: "gov no-query thing", nameField: "name", listKey: "data", defaultFields: "id,name", queryOption: false, creatable: false, replaceable: false, deletable: false };
+
+  test("queryOption: false drops -q/--query from list; -f/--filter is unaffected", async () => {
+    srv = startServer([{ method: "GET", path: "/governance/api/v1/gov-noquery", body: { data: [] } }]);
+    const t = testCtx(srv.url);
+    expect(await runG(["gov-noquery", "list", "-q", "x"], t, noQuerySpec)).not.toBe(0);
+    expect(t.err.join("")).toContain("unknown option");
+    expect(srv.calls.length).toBe(0);
+    expect(await runG(["gov-noquery", "list", "-f", "x"], t, noQuerySpec)).toBe(0);
+    expect(srv.calls.at(-1)!.query).toEqual({ filter: "x" });
+  });
+});

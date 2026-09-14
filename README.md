@@ -324,10 +324,12 @@ of 19.5.0, `gov` covers the Okta Identity Governance API on the same basis (see 
 
 `gov`/`governance` wraps the Okta Identity Governance (OIG) API, which lives on two base
 paths distinct from the rest of this CLI: `/governance/api/v1` and `/governance/api/v2`
-(`gov requests` is the v2 access-request surface, `gov requests-v1` the superseded v1 one -
-see each group's `-h` for which base path it uses). The 28 end-user `/my/**` paths (a
-signed-in user acting on their own requests/tasks) are intentionally not covered - this CLI
-is an admin tool.
+(`gov requests` is the v2 access-request surface, `gov requests-v1` the superseded v1 one).
+Only `requests`, `catalog`, `request-conditions`, `request-sequences`, `request-settings`,
+`entitlement-settings`, `revoke-principal-access`, `security-access-reviews`, and `tasks` are
+v2; every other `gov` group is v1. Each group's `-h` description says which. The 28 end-user
+`/my/**` paths (a signed-in user acting on their own requests/tasks) are intentionally not
+covered - this CLI is an admin tool.
 
 - **`--limit <n>` is always a client-side cap**, not a page size or query parameter: it stops
   the CLI after `n` rows have been paginated through, but is never sent to Okta as `limit`.

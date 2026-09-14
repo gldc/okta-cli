@@ -20,11 +20,11 @@ const TEAM_FIELDS = "id,name,created,lastUpdated";
 export function registerGovernance(program: Command, ctx: Ctx): Command {
   const g = subgroup(program, "governance", "Okta Identity Governance (OIG): access certification, entitlements, access requests").alias("gov");
 
-  const operations = subgroup(g, "operations", "Async governance operation status");
+  const operations = subgroup(g, "operations", "Async governance operation status (v1)");
   addOutputOptions(addVerbose(operations.command("get").description("Get an async governance operation by id (async governance writes return one in _links)").argument("<operationId>")), OPERATION_FIELDS)
     .action(action(ctx, (client, _opts, operationId) => client.json("GET", `/operations/${encodeURIComponent(operationId)}`, { basePath: GOV_V1 })));
 
-  const delegates = subgroup(g, "delegates", "Delegate appointments (who performs governance duties on whose behalf)");
+  const delegates = subgroup(g, "delegates", "Delegate appointments (who performs governance duties on whose behalf) (v1)");
   addOutputOptions(addVerbose(delegates.command("list").description("List delegate appointments")
     .option("-f, --filter <expr>", 'Okta filter expression (only delegatorId eq "<id>" is supported)')
     .option("--limit <n>", "Maximum number of results (client-side cap; never sent as a query parameter)", int)), DELEGATE_FIELDS)
@@ -34,7 +34,7 @@ export function registerGovernance(program: Command, ctx: Ctx): Command {
       return client.getAll("/delegates", { basePath: GOV_V1, listKey: "data", query, max: opts.limit });
     }));
 
-  const teams = subgroup(g, "teams", "Access request teams");
+  const teams = subgroup(g, "teams", "Access request teams (v1)");
   addOutputOptions(addVerbose(teams.command("list").description("List access request teams")
     .option("-f, --filter <expr>", "Okta filter expression")
     .option("--limit <n>", "Maximum number of results (client-side cap; never sent as a query parameter)", int)), TEAM_FIELDS)

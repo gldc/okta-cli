@@ -5,12 +5,12 @@ import { parseBody } from "../lib/body";
 import type { Query } from "../okta/client";
 import { ExitError } from "../okta/errors";
 import { GOV_V1 } from "./governance";
-import { defineResource, type ResourceSpec } from "./resource";
+import { defineResource, resourceGet, type ResourceSpec } from "./resource";
 
 export const GOV_LABELS: ResourceSpec = {
-  name: "labels", description: "Governance label categories and their values", path: "/labels",
+  name: "labels", description: "Governance label categories and their values (v1)", path: "/labels",
   basePath: GOV_V1, singular: "label", nameField: "name", idField: "labelId", listKey: "data",
-  defaultFields: "labelId,name,values", replaceable: false, // PATCH only, no PUT
+  defaultFields: "labelId,name,values", replaceable: false, queryOption: false, // PATCH only, no PUT
   // GET /v1/labels declares only `filter` - it 400s on `limit` ("Query parameter limit is
   // unexpected"), so no limitOption here even though every other list in this release has one.
 };
@@ -30,10 +30,16 @@ function labelPatchBody(opts: Record<string, any>): unknown {
 }
 
 // Builds the `assign-resource-labels` body shared by `resource-labels assign`/`unassign`: -b
-// passes the object through verbatim; otherwise both --resource and --label-value (each
-// repeatable) are required (the schema requires both fields).
+// passes the object through verbatim (validated: both fields must be non-empty arrays, so a
+// short -b fails fast here instead of as a TypeError later, e.g. `unassign`'s
+// `body.resourceOrns.length` in its result message); otherwise both --resource and
+// --label-value (each repeatable) are required (the schema requires both fields).
 function resourceLabelsBody(opts: Record<string, any>): { resourceOrns: string[]; labelValueIds: string[] } {
-  if (opts.body !== undefined) return parseBody(opts.body) as { resourceOrns: string[]; labelValueIds: string[] };
+  if (opts.body !== undefined) {
+    const body = parseBody(opts.body) as { resourceOrns?: string[]; labelValueIds?: string[] };
+    if (!body.resourceOrns?.length || !body.labelValueIds?.length) throw new ExitError("Body must have non-empty resourceOrns and labelValueIds arrays (assign-resource-labels)");
+    return body as { resourceOrns: string[]; labelValueIds: string[] };
+  }
   const resourceOrns = (opts.resource as string[] | undefined) ?? [];
   const labelValueIds = (opts.labelValue as string[] | undefined) ?? [];
   if (!resourceOrns.length || !labelValueIds.length) throw new ExitError("Provide -b, or --resource and --label-value (both repeatable)");
@@ -52,10 +58,15 @@ export function registerGovernanceLabels(g: Command, ctx: Ctx): void {
       .option("--value <v>", "new value; a plain string, only valid when --ref-type is LABEL-CATEGORY")
       .addOption(new Option("--ref-type <type>", "LABEL-CATEGORY (default) or LABEL-VALUE; LABEL-VALUE requires -b").choices(["LABEL-CATEGORY", "LABEL-VALUE"]).default("LABEL-CATEGORY")),
   ), GOV_LABELS.defaultFields)
-    .action(action(ctx, (client, opts, label) =>
-      client.json("PATCH", `/labels/${encodeURIComponent(label)}`, { basePath: GOV_V1, body: labelPatchBody(opts) })));
+    .action(action(ctx, async (client, opts, label) => {
+      // Validate before resolving the name-or-id (like resourceGet's other callers) so a bad
+      // -b/--op/--path/--ref-type combination fails without an extra network round-trip.
+      const body = labelPatchBody(opts);
+      const existing = await resourceGet(client, GOV_LABELS, label);
+      return client.json("PATCH", `/labels/${encodeURIComponent(existing.labelId)}`, { basePath: GOV_V1, body });
+    }));
 
-  const resourceLabels = subgroup(g, "resource-labels", "Labels assigned to resources");
+  const resourceLabels = subgroup(g, "resource-labels", "Labels assigned to resources (v1)");
   const RESOURCE_LABEL_FIELDS = "orn,profile.name,profile.id,labels";
 
   addOutputOptions(addVerbose(resourceLabels.command("list").description("List resources and their assigned labels")
@@ -84,7 +95,7 @@ export function registerGovernanceLabels(g: Command, ctx: Ctx): void {
       return `labels unassigned from ${body.resourceOrns.length} resource(s)`;
     }));
 
-  const resourceOwners = subgroup(g, "resource-owners", "Resource owners (principals responsible for a resource)");
+  const resourceOwners = subgroup(g, "resource-owners", "Resource owners (principals responsible for a resource) (v1)");
 
   addOutputOptions(addVerbose(resourceOwners.command("list").description("List resources and their owners")
     .requiredOption("-f, --filter <expr>", "Okta filter expression (required by this endpoint)")
@@ -109,16 +120,20 @@ export function registerGovernanceLabels(g: Command, ctx: Ctx): void {
     .option("--resource <orn>", "resource ORN")
     .option("--principal <orn>", "principal ORN to remove as owner (repeatable, max 5)", collect, []))
     .action(action(ctx, async (client, opts) => {
-      let body: unknown;
-      if (opts.body !== undefined) body = parseBody(opts.body);
-      else {
+      let body: Record<string, unknown>;
+      if (opts.body !== undefined) {
+        body = parseBody(opts.body) as Record<string, unknown>;
+        // Otherwise a short -b silently sends a bad PATCH and the result message below prints
+        // the literal string "undefined" instead of failing.
+        if (typeof body.resourceOrn !== "string") throw new ExitError("Body must have a resourceOrn string field (resource-owners-patch)");
+      } else {
         const principals = (opts.principal as string[] | undefined) ?? [];
         if (!opts.resource || !principals.length) throw new ExitError("Provide -b, or --resource and --principal (repeatable)");
         if (principals.length > 5) throw new ExitError("At most 5 --principal values (resource-owners-patch allows a maximum of 5 ops)");
         body = { resourceOrn: opts.resource, data: principals.map((p) => ({ op: "REMOVE", path: "/principalOrn", value: p })) };
       }
       await client.json("PATCH", "/resource-owners", { basePath: GOV_V1, body });
-      return `owner(s) removed from ${(body as { resourceOrn: string }).resourceOrn}`;
+      return `owner(s) removed from ${body.resourceOrn}`;
     }));
 
   // The envelope also carries a top-level parentResourceOrn, which getAll drops from the

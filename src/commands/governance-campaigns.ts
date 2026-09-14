@@ -8,10 +8,10 @@ import { GOV_V1 } from "./governance";
 import { defineResource, resourceGet, type ResourceSpec } from "./resource";
 
 export const GOV_CAMPAIGNS: ResourceSpec = {
-  name: "campaigns", description: "Access certification campaigns", path: "/campaigns",
+  name: "campaigns", description: "Access certification campaigns (v1)", path: "/campaigns",
   basePath: GOV_V1, singular: "campaign", nameField: "name", listKey: "data",
   defaultFields: "id,status,name,scheduleType,startDate,endDate,reviewerType",
-  limitOption: true, replaceable: false, // no PUT/PATCH on /campaigns/{id}
+  limitOption: true, queryOption: false, replaceable: false, // no PUT/PATCH on /campaigns/{id}
   listOptions: [{ flags: "--order-by <expr>", param: "orderBy", description: 'property + " asc"/" desc", e.g. "created desc"' }],
 };
 
@@ -91,7 +91,7 @@ export function registerGovernanceCampaigns(g: Command, ctx: Ctx): void {
   // Standalone reviews subgroup: `gov reviews …` is the plain /v1/reviews (campaign reviews)
   // endpoint, distinct from `gov campaigns reviews <campaign>` above (same endpoint, campaignId
   // prefilled) and from the unrelated v2 `gov security-access-reviews` family (Task 7).
-  const reviews = subgroup(g, "reviews", "Campaign reviews (certification decisions)");
+  const reviews = subgroup(g, "reviews", "Campaign reviews (certification decisions) (v1)");
 
   addOutputOptions(addVerbose(reviews.command("list").description("List campaign reviews")
     .option("-f, --filter <expr>", "Okta filter expression")

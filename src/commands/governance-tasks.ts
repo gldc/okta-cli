@@ -17,7 +17,7 @@ function taskAssigneesBody(opts: Record<string, any>): unknown {
 }
 
 export function registerGovernanceTasks(g: Command, ctx: Ctx): void {
-  const tasks = subgroup(g, "tasks", "Access request tasks (approvals, questions, to-dos assigned to a delegate/approver)");
+  const tasks = subgroup(g, "tasks", "Access request tasks (approvals, questions, to-dos assigned to a delegate/approver) (v2)");
 
   addOutputOptions(addVerbose(tasks.command("list").description("List tasks")
     .option("-f, --filter <expr>", "Okta filter expression")

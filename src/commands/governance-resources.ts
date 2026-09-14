@@ -13,6 +13,10 @@ import { GOV_V2 } from "./governance";
 
 const CONDITION_FIELDS = "id,status,priority,name,description,approvalSequenceId";
 const SEQUENCE_FIELDS = "id,name,description,compatibleResourceTypes";
+// `list`'s own default fields, without `description`: live, a sequence's description is
+// frequently multi-paragraph, which wrecks the table layout. `get` (a single row) keeps
+// SEQUENCE_FIELDS with description - that's not a table-layout problem there.
+const SEQUENCE_LIST_FIELDS = "id,name,compatibleResourceTypes";
 
 // Builds the `revoke-principal-access-creatable` body: verbatim from -b, or
 // {principalOrn, revokeOrns} from --principal/--revoke. Mirrors `messageBody` in
@@ -27,7 +31,7 @@ function revokePrincipalAccessBody(opts: Record<string, any>): unknown {
 }
 
 export function registerGovernanceResources(g: Command, ctx: Ctx): void {
-  const conditions = subgroup(g, "request-conditions", "Resource request conditions (who can request access, and how)");
+  const conditions = subgroup(g, "request-conditions", "Resource request conditions (who can request access, and how) (v2)");
 
   // Deviation check (plan Task 6, request-conditions list bullet): the plan flags
   // `conditions-list-filter` as a parameter that exists in the spec's parameter set but
@@ -62,9 +66,9 @@ export function registerGovernanceResources(g: Command, ctx: Ctx): void {
         client.json("POST", `/resources/${encodeURIComponent(resourceId)}/request-conditions/${encodeURIComponent(conditionId)}/${verb}`, { basePath: GOV_V2 })));
   }
 
-  const sequences = subgroup(g, "request-sequences", "Resource request sequences (approval sequences compatible with a resource type)");
+  const sequences = subgroup(g, "request-sequences", "Resource request sequences (approval sequences compatible with a resource type) (v2)");
 
-  addOutputOptions(addVerbose(sequences.command("list").description("List a resource's request sequences").argument("<resourceId>")), SEQUENCE_FIELDS)
+  addOutputOptions(addVerbose(sequences.command("list").description("List a resource's request sequences").argument("<resourceId>")), SEQUENCE_LIST_FIELDS)
     .action(action(ctx, (client, _opts, resourceId) =>
       client.getAll(`/resources/${encodeURIComponent(resourceId)}/request-sequences`, { basePath: GOV_V2, listKey: "data" })));
 
@@ -81,7 +85,7 @@ export function registerGovernanceResources(g: Command, ctx: Ctx): void {
       return `request sequence ${sequenceId} deleted`;
     }));
 
-  const settings = subgroup(g, "request-settings", "Resource and org-wide access request settings");
+  const settings = subgroup(g, "request-settings", "Resource and org-wide access request settings (v2)");
 
   addOutputOptions(addVerbose(settings.command("get").description("Get a resource's request settings").argument("<resourceId>")), null)
     .action(action(ctx, (client, _opts, resourceId) => client.json("GET", `/resources/${encodeURIComponent(resourceId)}/request-settings`, { basePath: GOV_V2 })));
@@ -95,7 +99,7 @@ export function registerGovernanceResources(g: Command, ctx: Ctx): void {
   addOutputOptions(addVerbose(bodyOpts(settings.command("org-update").description("Update org-wide access request settings (-b and/or -s; object body: subprocessorsAcknowledged?, integrations?)"))), null)
     .action(action(ctx, (client, opts) => client.json("PATCH", "/request-settings", { basePath: GOV_V2, body: bodyFromOpts(opts) })));
 
-  const entitlementSettings = subgroup(g, "entitlement-settings", "Per-resource entitlement management opt-in/opt-out");
+  const entitlementSettings = subgroup(g, "entitlement-settings", "Per-resource entitlement management opt-in/opt-out (v2)");
 
   addOutputOptions(addVerbose(entitlementSettings.command("get").description("Get a resource's entitlement management status").argument("<resourceOrn>")), "status")
     .action(action(ctx, (client, _opts, resourceOrn) => client.json("GET", `/resources/${encodeURIComponent(resourceOrn)}/entitlement-settings`, { basePath: GOV_V2 })));
@@ -106,7 +110,7 @@ export function registerGovernanceResources(g: Command, ctx: Ctx): void {
       client.json("PATCH", `/resources/${encodeURIComponent(resourceOrn)}/entitlement-settings`, { basePath: GOV_V2, body: { status: opts.status } })));
 
   // Top level on the governance group, not a subgroup (only one operation).
-  addOutputOptions(addVerbose(g.command("revoke-principal-access").description("Revoke a principal's access to one or more resources (-b, or --principal/--revoke; async - the response carries only _links to the operations to poll)")
+  addOutputOptions(addVerbose(g.command("revoke-principal-access").description("Revoke a principal's access to one or more resources (-b, or --principal/--revoke; async - the response carries only _links to the operations to poll) (v2)")
     .option("-b, --body <json>", "JSON body (revoke-principal-access-creatable); FILE:<path> reads a file; mutually exclusive with --principal/--revoke")
     .option("--principal <orn>", "principalOrn (user ORN) whose access is being revoked")
     .option("--revoke <orn>", "resourceOrn to revoke (repeatable)", collect, [])), null)

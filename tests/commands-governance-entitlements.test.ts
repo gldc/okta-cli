@@ -64,7 +64,7 @@ describe("entitlements", () => {
     expect(srv.calls[0]!.body).toEqual({ name: "Salesforce role", externalValue: "role", multiValue: "false", dataType: "string" });
   });
 
-  test("replace: GET then PUT merge", async () => {
+  test("replace: GET then PUT merge; beforeReplace re-adds id (entitlement-updatable requires it)", async () => {
     srv = startServer([
       { method: "GET", path: `${GOV_V1}/entitlements/e1`, body: entitlement },
       { method: "PUT", path: `${GOV_V1}/entitlements/e1`, body: { ...entitlement, name: "Renamed" } },
@@ -74,6 +74,7 @@ describe("entitlements", () => {
     expect(srv.calls.at(-1)!.method).toBe("PUT");
     expect(srv.calls.at(-1)!.path).toBe(`${GOV_V1}/entitlements/e1`);
     expect((srv.calls.at(-1)!.body as any).name).toBe("Renamed");
+    expect((srv.calls.at(-1)!.body as any).id).toBe("e1");
   });
 
   test("delete", async () => {
@@ -149,7 +150,7 @@ describe("entitlements", () => {
 });
 
 describe("entitlement-bundles", () => {
-  const bundle = { id: "b1", name: "Sales bundle", status: "ACTIVE", targetResourceOrn: "orn:okta:resource:x", description: "d" };
+  const bundle = { id: "b1", name: "Sales bundle", status: "ACTIVE", targetResourceOrn: "orn:okta:resource:x", target: { type: "APP", externalId: "0oa1" }, description: "d" };
 
   test("list has no required filter, supports --include full_entitlements", async () => {
     srv = startServer([{ method: "GET", path: `${GOV_V1}/entitlement-bundles`, body: { data: [bundle] } }]);
@@ -172,6 +173,13 @@ describe("entitlement-bundles", () => {
     expect(srv.calls.at(-1)!.body).toEqual({ name: "Sales bundle" });
     await runTest(["gov", "entitlement-bundles", "replace", "b1", "-s", "description=updated"], t.ctx);
     expect(srv.calls.at(-1)!.method).toBe("PUT");
+    // beforeReplace re-adds id/targetResourceOrn/target: entitlement-bundle-updatable requires
+    // all three, and they'd otherwise be stripped (id) or never merged in (targetResourceOrn,
+    // target aren't part of the -s/-b diff) by the default replace merge.
+    const putBody = srv.calls.at(-1)!.body as any;
+    expect(putBody.id).toBe("b1");
+    expect(putBody.targetResourceOrn).toBe("orn:okta:resource:x");
+    expect(putBody.target).toEqual({ type: "APP", externalId: "0oa1" });
     await runTest(["gov", "entitlement-bundles", "delete", "b1"], t.ctx);
     expect(t.out.at(-1)).toBe("entitlement bundle b1 (Sales bundle) deleted\n");
   });
@@ -183,11 +191,14 @@ describe("grants", () => {
     targetPrincipalOrn: "orn:okta:directory:00o1:user:00u1", targetResourceOrn: "orn:okta:resource:x", entitlementBundleId: "b1",
   };
 
-  test("list requires -f; --include full_entitlements --include metadata is comma-joined", async () => {
-    srv = startServer([{ method: "GET", path: `${GOV_V1}/grants`, body: { data: [grant] } }]);
+  test("list requires -f; --include full_entitlements --include metadata sends two repeated include params (not comma-joined - Okta 400s on that live)", async () => {
+    srv = startServer([]);
+    let includeValues: string[] = [];
+    srv.add({ method: "GET", path: `${GOV_V1}/grants`, handler: (_req, url) => { includeValues = url.searchParams.getAll("include"); return Response.json({ data: [grant] }); } });
     const t = testCtx(srv.url);
     expect(await runTest(["gov", "grants", "list", "-f", 'targetResourceOrn eq "x"', "--include", "full_entitlements", "--include", "metadata"], t.ctx)).toBe(0);
-    expect(srv.calls[0]!.query).toEqual({ filter: 'targetResourceOrn eq "x"', include: "full_entitlements,metadata" });
+    expect(includeValues).toEqual(["full_entitlements", "metadata"]);
+    expect(srv.calls[0]!.query.filter).toBe('targetResourceOrn eq "x"');
   });
 
   test("list without -f exits non-zero", async () => {
@@ -195,6 +206,17 @@ describe("grants", () => {
     const t = testCtx(srv.url);
     expect(await runTest(["gov", "grants", "list"], t.ctx)).not.toBe(0);
     expect(srv.calls.length).toBe(0);
+  });
+
+  // entitlementBundleId only exists on ENTITLEMENT-BUNDLE grants; live, every CUSTOM/ENTITLEMENT
+  // grant's row printed "WARNING: field entitlementBundleId either never filled or
+  // non-existant." with it in the default columns.
+  test("default table columns drop entitlementBundleId (blank/warning for CUSTOM and ENTITLEMENT grants live)", async () => {
+    srv = startServer([{ method: "GET", path: `${GOV_V1}/grants`, body: { data: [grant] } }]);
+    const t = testCtx(srv.url);
+    await runTest(["gov", "grants", "list", "-f", 'targetResourceOrn eq "x"'], t.ctx);
+    expect(t.out.at(-1)).toBe("g1  ACTIVE  ENTITLEMENT-BUNDLE  ALLOW  orn:okta:directory:00o1:user:00u1  orn:okta:resource:x  \n");
+    expect(GOV_GRANTS.defaultFields).not.toContain("entitlementBundleId");
   });
 
   test("get, add, replace (no delete: grants are not deletable)", async () => {

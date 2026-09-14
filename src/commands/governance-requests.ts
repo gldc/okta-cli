@@ -8,9 +8,9 @@ import { GOV_V1, GOV_V2 } from "./governance";
 import { defineResource, resourceGet, type ResourceSpec } from "./resource";
 
 export const GOV_REQUEST_TYPES: ResourceSpec = {
-  name: "request-types", description: "Access request types (request templates)", path: "/request-types",
+  name: "request-types", description: "Access request types (request templates) (v1)", path: "/request-types",
   basePath: GOV_V1, singular: "request type", nameField: "name", listKey: "data",
-  defaultFields: "id,status,name,description,lastUpdated", limitOption: true, replaceable: false, // no PUT/PATCH on /request-types/{id}
+  defaultFields: "id,status,name,description,lastUpdated", limitOption: true, queryOption: false, replaceable: false, // no PUT/PATCH on /request-types/{id}
   listOptions: [{ flags: "--order-by <expr>", param: "orderBy", description: 'property + " asc"/" desc"' }],
 };
 

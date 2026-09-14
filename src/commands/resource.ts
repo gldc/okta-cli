@@ -21,6 +21,10 @@ export interface ResourceSpec {
   // Adds a `--limit <n>` option to `list` that caps `resourceList`'s result client-side
   // (`getAll`'s `max`) - never sent as a `limit` query parameter.
   limitOption?: boolean;
+  // Whether `list` gets a `-q/--query` option (Okta's free-text "q" search parameter).
+  // Defaults to true; every governance GET declares no `q` parameter, so every governance
+  // ResourceSpec sets this to false.
+  queryOption?: boolean;
   // Extra top-level read-only fields to strip from the GET representation before it's used as
   // the PUT merge base in `replace` (on top of the fields every resource strips - see
   // REPLACE_OMIT_DEFAULT below).
@@ -129,7 +133,7 @@ export function defineResource(parent: Command, ctx: Ctx, spec: ResourceSpec): C
   const listCmd = g.command("list").description(`List ${spec.singular}s (optional argument: substring of ${spec.nameField})`).argument("[partial_name]");
   if (spec.filterRequired) listCmd.requiredOption("-f, --filter <expr>", "Okta SCIM filter expression (required by this endpoint)");
   else listCmd.option("-f, --filter <expr>", "Okta filter expression");
-  listCmd.option("-q, --query <q>", "Okta 'q' query");
+  if (spec.queryOption !== false) listCmd.option("-q, --query <q>", "Okta 'q' query");
   if (spec.limitOption) listCmd.option("--limit <n>", "Maximum number of results (client-side cap; never sent as a query parameter)", int);
   out(listCmd, true)
     .action(action(ctx, (client, opts, partial?: string) => {

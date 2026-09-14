@@ -48,18 +48,36 @@ describe("labels", () => {
   });
 
   test("update: LABEL-CATEGORY --op/--path/--value triple defaults refType", async () => {
-    srv = startServer([{ method: "PATCH", path: `${GOV_V1}/labels/l1`, body: label }]);
+    srv = startServer([
+      { method: "GET", path: `${GOV_V1}/labels/l1`, body: label },
+      { method: "PATCH", path: `${GOV_V1}/labels/l1`, body: label },
+    ]);
     const t = testCtx(srv.url);
     await runTest(["gov", "labels", "update", "l1", "--op", "REPLACE", "--path", "/name", "--value", "Confidential"], t.ctx);
-    expect(srv.calls[0]!.body).toEqual([{ op: "REPLACE", path: "/name", value: "Confidential", refType: "LABEL-CATEGORY" }]);
+    expect(srv.calls.at(-1)!.body).toEqual([{ op: "REPLACE", path: "/name", value: "Confidential", refType: "LABEL-CATEGORY" }]);
   });
 
   test("update: -b passes an array through verbatim", async () => {
-    srv = startServer([{ method: "PATCH", path: `${GOV_V1}/labels/l1`, body: label }]);
+    srv = startServer([
+      { method: "GET", path: `${GOV_V1}/labels/l1`, body: label },
+      { method: "PATCH", path: `${GOV_V1}/labels/l1`, body: label },
+    ]);
     const t = testCtx(srv.url);
     const body = [{ op: "ADD", path: "/values/-", value: { name: "Low" }, refType: "LABEL-VALUE" }];
     await runTest(["gov", "labels", "update", "l1", "-b", JSON.stringify(body)], t.ctx);
-    expect(srv.calls[0]!.body).toEqual(body);
+    expect(srv.calls.at(-1)!.body).toEqual(body);
+  });
+
+  test("update: resolves a name (not just an id) via resourceGet, like get/delete", async () => {
+    srv = startServer([
+      { method: "GET", path: `${GOV_V1}/labels/Sensitivity`, status: 404, body: { errorSummary: "nf" } },
+      { method: "GET", path: `${GOV_V1}/labels`, body: { data: [label] } },
+      { method: "PATCH", path: `${GOV_V1}/labels/l1`, body: label },
+    ]);
+    const t = testCtx(srv.url);
+    await runTest(["gov", "labels", "update", "Sensitivity", "--op", "REPLACE", "--path", "/name", "--value", "Confidential"], t.ctx);
+    expect(srv.calls.at(-1)!.path).toBe(`${GOV_V1}/labels/l1`);
+    expect(srv.calls.at(-1)!.body).toEqual([{ op: "REPLACE", path: "/name", value: "Confidential", refType: "LABEL-CATEGORY" }]);
   });
 
   test("update: --ref-type LABEL-VALUE without -b is rejected", async () => {
@@ -98,6 +116,24 @@ describe("resource-labels", () => {
     srv = startServer([]);
     const t = testCtx(srv.url);
     expect(await runTest(["gov", "resource-labels", "assign", "--resource", "orn:a"], t.ctx)).not.toBe(0);
+    expect(srv.calls.length).toBe(0);
+  });
+
+  test("assign: -b lacking resourceOrns/labelValueIds throws a clear ExitError, not a TypeError", async () => {
+    srv = startServer([]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["gov", "resource-labels", "assign", "-b", "{}"], t.ctx)).not.toBe(0);
+    expect(t.err.join("")).toContain("ERROR:");
+    expect(t.err.join("")).not.toContain("TypeError");
+    expect(srv.calls.length).toBe(0);
+  });
+
+  test("unassign: -b lacking resourceOrns/labelValueIds throws a clear ExitError, not a TypeError", async () => {
+    srv = startServer([]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["gov", "resource-labels", "unassign", "-b", '{"resourceOrns":["orn:a"]}'], t.ctx)).not.toBe(0);
+    expect(t.err.join("")).toContain("ERROR:");
+    expect(t.err.join("")).not.toContain("TypeError");
     expect(srv.calls.length).toBe(0);
   });
 
@@ -160,6 +196,15 @@ describe("resource-owners", () => {
     srv = startServer([]);
     const t = testCtx(srv.url);
     expect(await runTest(["gov", "resource-owners", "remove"], t.ctx)).not.toBe(0);
+    expect(srv.calls.length).toBe(0);
+  });
+
+  test("remove: -b lacking resourceOrn throws a clear ExitError instead of printing \"undefined\"", async () => {
+    srv = startServer([{ method: "PATCH", path: `${GOV_V1}/resource-owners` }]);
+    const t = testCtx(srv.url);
+    expect(await runTest(["gov", "resource-owners", "remove", "-b", '{"data":[]}'], t.ctx)).not.toBe(0);
+    expect(t.err.join("")).toContain("ERROR:");
+    expect(t.out.join("")).not.toContain("undefined");
     expect(srv.calls.length).toBe(0);
   });
 

@@ -11,7 +11,7 @@ const ENTITLEMENT_HISTORY_FIELDS = "startDate,endDate,lifecycle";
 // object keyed by a required filter, principal-entitlements is a list plus a differently-shaped
 // history sub-resource, principal-settings has a PATCH but no GET.
 export function registerGovernancePrincipals(g: Command, ctx: Ctx): void {
-  const principalAccess = subgroup(g, "principal-access", "Effective access grant for one principal on one resource");
+  const principalAccess = subgroup(g, "principal-access", "Effective access grant for one principal on one resource (v1)");
   // Deviation from the plan: the plan says "client.get + addOutputOptions(..., null)" (the
   // `rate-limits settings` precedent in tenant.ts), but `OktaClient.get(path, query)`
   // (src/okta/client.ts) has no basePath parameter - every governance endpoint needs one.
@@ -22,7 +22,7 @@ export function registerGovernancePrincipals(g: Command, ctx: Ctx): void {
     .requiredOption("-f, --filter <expr>", "Okta SCIM filter expression (required by this endpoint)")), null)
     .action(action(ctx, (client, opts) => client.json("GET", "/principal-access", { basePath: GOV_V1, query: { filter: opts.filter } })));
 
-  const principalEntitlements = subgroup(g, "principal-entitlements", "Effective entitlements for principals");
+  const principalEntitlements = subgroup(g, "principal-entitlements", "Effective entitlements for principals (v1)");
 
   addOutputOptions(addVerbose(principalEntitlements.command("list").description("List effective entitlements across principals")
     .requiredOption("-f, --filter <expr>", "Okta SCIM filter expression (required by this endpoint)")
@@ -46,7 +46,7 @@ export function registerGovernancePrincipals(g: Command, ctx: Ctx): void {
   addOutputOptions(addVerbose(principalEntitlements.command("changes").description("Get one principal-entitlements-change record by its (opaque) id").argument("<principalEntitlementsChangeId>")), null)
     .action(action(ctx, (client, _opts, id) => client.json("GET", `/principal-entitlements-changes/${encodeURIComponent(id)}`, { basePath: GOV_V1 })));
 
-  const principalSettings = subgroup(g, "principal-settings", 'Per-principal governance settings (delegate appointments); no GET here - use "gov delegates list --filter \'delegatorId eq \\"<id>\\"\'" to read them');
+  const principalSettings = subgroup(g, "principal-settings", 'Per-principal governance settings (delegate appointments); no GET here - use "gov delegates list --filter \'delegatorId eq \\"<id>\\"\'" to read them (v1)');
   addOutputOptions(addVerbose(bodyOpts(principalSettings.command("update").description("Update a principal's delegate appointments (object body: {delegates:{appointments:[...]}}, max 1 appointment); id is an ORN or Okta id")
     .argument("<targetPrincipalId>"))), null)
     .action(action(ctx, (client, opts, id) => client.json("PATCH", `/principal-settings/${encodeURIComponent(id)}`, { basePath: GOV_V1, body: bodyFromOpts(opts) })));

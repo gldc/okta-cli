@@ -83,11 +83,13 @@ describe("request-conditions", () => {
 describe("request-sequences", () => {
   const sequence = { id: "s1", name: "Manager then security", description: "d", compatibleResourceTypes: ["APP"] };
 
-  test("list <resourceId>", async () => {
-    srv = startServer([{ method: "GET", path: `${GOV_V2}/resources/${RID}/request-sequences`, body: { data: [sequence] } }]);
+  test("list <resourceId>: default columns drop the multi-paragraph description (id, name, compatibleResourceTypes only - it wrecks table layout)", async () => {
+    const multiParagraph = { ...sequence, description: "Para one.\n\nPara two, much longer, goes on for a while." };
+    srv = startServer([{ method: "GET", path: `${GOV_V2}/resources/${RID}/request-sequences`, body: { data: [multiParagraph] } }]);
     const t = testCtx(srv.url);
     expect(await runTest(["gov", "request-sequences", "list", RID], t.ctx)).toBe(0);
     expect(srv.calls.at(-1)!.path).toBe(`${GOV_V2}/resources/${RID}/request-sequences`);
+    expect(t.out.at(-1)).toBe('s1  Manager then security  ["APP"]  \n');
   });
 
   test("get <resourceId> <sequenceId>", async () => {

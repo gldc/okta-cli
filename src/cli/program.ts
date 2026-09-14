@@ -18,6 +18,8 @@ import { registerGovernanceEntitlements } from "../commands/governance-entitleme
 import { registerGovernanceLabels } from "../commands/governance-labels";
 import { registerGovernancePrincipals } from "../commands/governance-principals";
 import { registerGovernanceRequests } from "../commands/governance-requests";
+import { registerGovernanceResources } from "../commands/governance-resources";
+import { registerGovernanceTasks } from "../commands/governance-tasks";
 import { registerIdps } from "../commands/idps";
 import { registerInlinehooks } from "../commands/inlinehooks";
 import { registerIntegrations } from "../commands/integrations";
@@ -78,6 +80,8 @@ export function buildProgram(ctx: Ctx): Command {
   registerGovernanceCollections(govCmd, ctx);
   registerGovernanceLabels(govCmd, ctx);
   registerGovernanceRequests(govCmd, ctx);
+  registerGovernanceResources(govCmd, ctx);
+  registerGovernanceTasks(govCmd, ctx);
   registerUserTypes(program, ctx);
   registerPolicies(program, ctx);
   registerAuthenticators(program, ctx);

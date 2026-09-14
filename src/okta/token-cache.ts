@@ -1,4 +1,4 @@
-import { chmod } from "node:fs/promises";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { configPath } from "../config";
 
@@ -47,7 +47,12 @@ export class TokenCache {
     if (this.disabled) return;
     const all = await this.readAll();
     all[key] = token;
-    await Bun.write(this.path, JSON.stringify(all));
-    await chmod(this.path, 0o600);
+    await mkdir(dirname(this.path), { recursive: true });
+    // Created with mode 0600 directly (access tokens are as sensitive as the private key that
+    // got them) rather than written world/group-readable and then chmod'd; a pre-existing file
+    // still gets an explicit chmod since `writeFile`'s `mode` only applies on creation.
+    const existed = await Bun.file(this.path).exists();
+    await writeFile(this.path, JSON.stringify(all), { mode: 0o600 });
+    if (existed) await chmod(this.path, 0o600);
   }
 }

@@ -42,6 +42,8 @@ export async function buildClient(profile: Profile, opts: ClientOptions = {}, en
   const p = profile as OAuthProfileConfig;
   const privateKey = await resolvePrivateKey(p);
   const oauthProfile: OAuthProfile = { url: p.url, clientId: p.clientId, privateKey, kid: p.kid, scopes: p.scopes, dpop: p.dpop };
-  const source = new OAuthTokenSource(oauthProfile, { cache: new TokenCache(env) });
+  // Forwards the same verbosity/log the resulting OktaClient uses, so -v/-vvv also cover the
+  // OAuth token request (oauth.ts), not just resource requests.
+  const source = new OAuthTokenSource(oauthProfile, { cache: new TokenCache(env), verbosity: opts.verbosity, log: opts.log });
   return new OktaClient(p.url, { kind: "oauth", source }, opts);
 }

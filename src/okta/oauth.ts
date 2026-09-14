@@ -1,4 +1,5 @@
 import { CommunicationError, ExitError } from "./errors";
+import { redactHeaders } from "./http-log";
 import type { TokenCache } from "./token-cache";
 
 export interface OAuthProfile {
@@ -75,12 +76,18 @@ async function importPemPrivateKey(pem: string): Promise<ImportedKey> {
     const key = await crypto.subtle.importKey("pkcs8", der, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, true, ["sign"]);
     const jwk = await crypto.subtle.exportKey("jwk", key);
     return { key, alg: "RS256", publicJwk: toPublicJwk(jwk) };
-  } catch (e) {
-    if (e instanceof ExitError) throw e;
+  } catch {
+    // Not an RSA PKCS#8 key - fall through and try EC below.
   }
-  const key = await crypto.subtle.importKey("pkcs8", der, { name: "ECDSA", namedCurve: "P-256" }, true, ["sign"]);
-  const jwk = await crypto.subtle.exportKey("jwk", key);
-  return { key, alg: "ES256", publicJwk: toPublicJwk(jwk) };
+  try {
+    const key = await crypto.subtle.importKey("pkcs8", der, { name: "ECDSA", namedCurve: "P-256" }, true, ["sign"]);
+    const jwk = await crypto.subtle.exportKey("jwk", key);
+    return { key, alg: "ES256", publicJwk: toPublicJwk(jwk) };
+  } catch {
+    // Neither import worked - report our own clear error rather than leaking the EC attempt's
+    // raw DOMException, which says nothing about the RSA attempt that was also tried.
+    throw new ExitError("could not import private key: not a PKCS#8 RSA or EC P-256 key");
+  }
 }
 
 // Imports a service app's private key (JWK object or PEM string) for signing the client
@@ -121,6 +128,10 @@ export interface DpopProofInput {
   key: CryptoKey;
   publicJwk: JsonWebKey;
   alg: SigningAlg;
+  // epoch seconds for the `iat` claim; defaults to the real clock. OAuthTokenSource passes its
+  // own injected `now` (so its tests are deterministic); OktaClient's per-request proofs have
+  // no equivalent injected clock and keep using the default.
+  now?: number;
 }
 
 // A DPoP proof JWT (RFC 9449): header carries the ephemeral key's public JWK, claims carry the
@@ -128,7 +139,8 @@ export interface DpopProofInput {
 // present once an access token exists to hash).
 export async function dpopProof(input: DpopProofInput): Promise<string> {
   const header = { typ: "dpop+jwt", alg: input.alg, jwk: input.publicJwk };
-  const claims: Record<string, unknown> = { htm: input.htm, htu: input.htu, iat: Math.floor(Date.now() / 1000), jti: crypto.randomUUID() };
+  const iat = input.now ?? Math.floor(Date.now() / 1000);
+  const claims: Record<string, unknown> = { htm: input.htm, htu: input.htu, iat, jti: crypto.randomUUID() };
   if (input.nonce) claims.nonce = input.nonce;
   if (input.ath) claims.ath = input.ath;
   return signJwt(header, claims, input.key, input.alg);
@@ -178,10 +190,20 @@ export interface OAuthTokenSourceOptions {
   fetch?: FetchLike;
   now?: () => number;
   cache?: TokenCache;
+  log?: (line: string) => void;
+  verbosity?: number;
 }
 
 // Refresh this long before actual expiry so a slow request never races token expiry mid-flight.
 const REFRESH_SKEW_MS = 60_000;
+
+// The token cache key: distinguishes not just org+identity+scopes but also which key (`kid`)
+// signed the assertion and whether the profile is DPoP-bound - two profiles that otherwise share
+// url/clientId/scopes should not share a cached token if either of those differs, since the
+// resulting token's binding (and possibly its granted scopes) can differ too.
+export function tokenCacheKey(profile: OAuthProfile): string {
+  return `${profile.url}|${profile.clientId}|${profile.scopes.join(" ")}|${profile.kid ?? ""}|${profile.dpop ? "1" : "0"}`;
+}
 
 // Fetches (and caches) OAuth 2.0 client-credentials access tokens using private_key_jwt, with
 // optional DPoP. Caches in memory for the life of the process and, when a TokenCache is given,
@@ -192,6 +214,8 @@ export class OAuthTokenSource {
   private readonly now: () => number;
   private readonly cache?: TokenCache;
   private readonly cacheKey: string;
+  private readonly log: (line: string) => void;
+  private readonly verbosity: number;
   private memo?: OAuthToken;
   private inflight?: Promise<OAuthToken>;
 
@@ -200,7 +224,9 @@ export class OAuthTokenSource {
     this.fetchImpl = opts.fetch ?? fetch;
     this.now = opts.now ?? Date.now;
     this.cache = opts.cache;
-    this.cacheKey = `${profile.url}|${profile.clientId}|${profile.scopes.join(" ")}`;
+    this.cacheKey = tokenCacheKey(profile);
+    this.log = opts.log ?? ((line) => process.stderr.write(line + "\n"));
+    this.verbosity = opts.verbosity ?? 0;
   }
 
   private valid(token: OAuthToken | undefined, nowMs: number): token is OAuthToken {
@@ -264,9 +290,16 @@ export class OAuthTokenSource {
     const headers: Record<string, string> = { "Content-Type": "application/x-www-form-urlencoded" };
     if (this.profile.dpop) {
       const { key, alg, publicJwk } = await getDpopKeyMaterial();
-      headers.DPoP = await dpopProof({ htm: "POST", htu: tokenEndpoint, nonce: dpopNonce, key, publicJwk, alg });
+      headers.DPoP = await dpopProof({ htm: "POST", htu: tokenEndpoint, nonce: dpopNonce, key, publicJwk, alg, now: Math.floor(nowMs / 1000) });
     }
+    // Mirrors OktaClient's resource-request logging (client.ts) at the same verbosity
+    // thresholds, but the body (form-encoded client_assertion/DPoP proof material) is never
+    // logged, even at -vvv.
+    if (this.verbosity >= 1) this.log(`> POST ${tokenEndpoint}`);
+    if (this.verbosity >= 3) this.log(`> ${JSON.stringify(redactHeaders(headers))}`);
     const rsp = await this.fetchImpl(tokenEndpoint, { method: "POST", headers, body: body.toString() });
+    if (this.verbosity >= 2) this.log(`< ${rsp.status}`);
+    if (this.verbosity >= 3) this.log(`< ${JSON.stringify(redactHeaders(Object.fromEntries(rsp.headers)))}`);
     const text = await rsp.text();
     let parsed: Record<string, unknown> = {};
     try {

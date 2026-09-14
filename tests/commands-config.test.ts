@@ -168,4 +168,32 @@ describe("config test", () => {
     expect(await runTest(["config", "test"], t.ctx)).toBe(253);
     expect(t.out.join("")).toContain("OKTA_API_ERROR: E0000001: bad request");
   });
+
+  test("-v enables request logging to ctx.io.err (ssws)", async () => {
+    srv = startServer([{ method: "GET", path: "/api/v1/org", body: { companyName: "Acme Inc" } }]);
+    const t = testCtx(srv.url);
+    t.ctx.env = { OKTA_URL: srv.url, OKTA_TOKEN: "tok" };
+    expect(await runTest(["config", "test", "-v"], t.ctx)).toBe(0);
+    expect(t.err.join("")).toContain(`> GET ${srv.url}/api/v1/org`);
+  });
+
+  test("-vvv also logs the oauth token request, with sensitive headers redacted", async () => {
+    srv = startServer([
+      { method: "POST", path: "/oauth2/v1/token", body: { token_type: "Bearer", access_token: "tok", expires_in: 3600 } },
+      { method: "GET", path: "/api/v1/org", body: { companyName: "Acme Inc" } },
+    ]);
+    const t = testCtx(srv.url);
+    t.ctx.env = {
+      OKTA_URL: srv.url,
+      OKTA_CLIENT_ID: "cid1",
+      OKTA_PRIVATE_KEY: JSON.stringify(await ecJwk()),
+      OKTA_SCOPES: "okta.users.read",
+      OKTA_CLI_NO_TOKEN_CACHE: "1",
+    };
+    expect(await runTest(["config", "test", "-vvv"], t.ctx)).toBe(0);
+    const logged = t.err.join("");
+    expect(logged).toContain(`> POST ${srv.url}/oauth2/v1/token`);
+    expect(logged).toContain(`> GET ${srv.url}/api/v1/org`);
+    expect(logged).toContain("[REDACTED]");
+  });
 });

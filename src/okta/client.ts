@@ -1,5 +1,6 @@
 import { isPlainObject } from "../lib/dotted";
 import { CommunicationError, OktaApiError, type OktaErrorBody } from "./errors";
+import { redactHeaders } from "./http-log";
 import { dpopAth, dpopProof, type OAuthTokenSource } from "./oauth";
 
 export type Method = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
@@ -17,13 +18,15 @@ export type ClientAuth = { kind: "ssws"; token: string } | { kind: "oauth"; sour
 
 const MAX_RETRIES = 10;
 
-// Header names whose values must never reach the verbose (-vvv) request/response log.
-const SENSITIVE_HEADERS = new Set(["authorization", "dpop"]);
-
-function redactHeaders(headers: Record<string, string>): Record<string, string> {
+// Pulls the quoted key="value" pairs out of a WWW-Authenticate challenge, e.g.
+// `Bearer error="insufficient_scope", error_description="...", scope="okta.policies.read"`.
+// Used to recover a machine-readable errorCode/summary for responses (typically a 403 on a
+// missing OAuth scope) that carry the real detail only in this header and an empty JSON body.
+function parseWwwAuthenticate(header: string | null): Record<string, string> | undefined {
+  if (!header) return undefined;
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(headers)) out[k] = SENSITIVE_HEADERS.has(k.toLowerCase()) ? "[REDACTED]" : v;
-  return out;
+  for (const m of header.matchAll(/([a-zA-Z_]+)="([^"]*)"/g)) out[m[1]!] = m[2]!;
+  return Object.keys(out).length ? out : undefined;
 }
 
 export function parseNextLink(header: string | null): string | undefined {
@@ -68,6 +71,10 @@ export class OktaClient {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly log: (line: string) => void;
   private readonly verbosity: number;
+  // The resource server's most recently observed `dpop-nonce` response header, remembered
+  // across requests so a paginated `getAll` doesn't pay a 401 round-trip on every page - Okta
+  // hands out a fresh nonce on any response, not only a use_dpop_nonce challenge (RFC 9449 8.2).
+  private dpopNonce?: string;
 
   // `token` is shorthand for `{ kind: "ssws", token }` - every existing caller keeps working
   // unchanged; a config profile using an OAuth service app instead passes `{ kind: "oauth",
@@ -96,8 +103,10 @@ export class OktaClient {
 
   // Authorization (+ DPoP proof, when the token is DPoP-bound) for one attempt at one request.
   // SSWS is static; OAuth fetches/caches a token per call (OAuthTokenSource memoizes) and, for
-  // DPoP, signs a fresh proof every attempt since its `jti`/`iat`/`nonce` can't be reused.
-  private async authHeaders(method: Method, url: string, dpopNonce?: string): Promise<Record<string, string>> {
+  // DPoP, signs a fresh proof every attempt since its `jti`/`iat`/`nonce` can't be reused. The
+  // nonce itself is sent proactively from `this.dpopNonce` (set in `send()` below) rather than
+  // waiting for a 401 to hand out - so only the very first request of a session pays that cost.
+  private async authHeaders(method: Method, url: string): Promise<Record<string, string>> {
     if (this.auth.kind === "ssws") return { Authorization: `SSWS ${this.auth.token}` };
     const { accessToken, tokenType } = await this.auth.source.token();
     if (tokenType !== "DPoP") return { Authorization: `Bearer ${accessToken}` };
@@ -105,7 +114,7 @@ export class OktaClient {
     if (!material) return { Authorization: `Bearer ${accessToken}` };
     const htu = url.split("?")[0]!;
     const ath = await dpopAth(accessToken);
-    const proof = await dpopProof({ htm: method, htu, nonce: dpopNonce, ath, key: material.key, publicJwk: material.publicJwk, alg: material.alg });
+    const proof = await dpopProof({ htm: method, htu, nonce: this.dpopNonce, ath, key: material.key, publicJwk: material.publicJwk, alg: material.alg });
     return { Authorization: `DPoP ${accessToken}`, DPoP: proof };
   }
 
@@ -114,11 +123,10 @@ export class OktaClient {
   // attempt rather than by the caller, since an OAuth/DPoP retry needs a fresh token and/or proof.
   private async send(method: Method, url: string, init: RequestInit): Promise<Response> {
     const staticHeaders = (init.headers ?? {}) as Record<string, string>;
-    let dpopNonce: string | undefined;
     let dpopNonceRetried = false;
     let invalidTokenRetried = false;
     for (let attempt = 0; ; attempt++) {
-      const headers = { ...staticHeaders, ...(await this.authHeaders(method, url, dpopNonce)) };
+      const headers = { ...staticHeaders, ...(await this.authHeaders(method, url)) };
       if (this.verbosity >= 1) this.log(`> ${method} ${url}`);
       if (this.verbosity >= 3 && typeof init.body === "string") this.log(`> ${init.body}`);
       if (this.verbosity >= 3) this.log(`> ${JSON.stringify(redactHeaders(headers))}`);
@@ -130,6 +138,11 @@ export class OktaClient {
       }
       if (this.verbosity >= 2) this.log(`< ${rsp.status}`);
       if (this.verbosity >= 3) this.log(`< ${JSON.stringify(redactHeaders(Object.fromEntries(rsp.headers)))}`);
+      // Remembered regardless of status - the resource server hands out a fresh nonce on any
+      // response, and using it proactively on the next request avoids paying a 401 round-trip
+      // for every subsequent page/call (RFC 9449 8.2).
+      const nonceHeader = rsp.headers.get("dpop-nonce");
+      if (nonceHeader) this.dpopNonce = nonceHeader;
       if (rsp.status === 429) {
         if (attempt >= MAX_RETRIES) throw new CommunicationError(`rate limited: gave up after ${MAX_RETRIES} retries`);
         const reset = Number(rsp.headers.get("X-Rate-Limit-Reset") ?? 0);
@@ -139,13 +152,9 @@ export class OktaClient {
       }
       if (rsp.status === 401 && this.auth.kind === "oauth") {
         const wwwAuth = rsp.headers.get("www-authenticate") ?? "";
-        if (!dpopNonceRetried && /use_dpop_nonce/.test(wwwAuth)) {
-          const nonce = rsp.headers.get("dpop-nonce");
-          if (nonce) {
-            dpopNonceRetried = true;
-            dpopNonce = nonce;
-            continue;
-          }
+        if (!dpopNonceRetried && /use_dpop_nonce/.test(wwwAuth) && this.dpopNonce) {
+          dpopNonceRetried = true;
+          continue;
         }
         if (!invalidTokenRetried && /invalid_token/.test(wwwAuth)) {
           invalidTokenRetried = true;
@@ -158,6 +167,17 @@ export class OktaClient {
         const text = await rsp.text();
         let body: OktaErrorBody;
         try { body = JSON.parse(text); } catch { body = { errorSummary: text || rsp.statusText }; }
+        if (!body.errorCode) {
+          const challenge = parseWwwAuthenticate(rsp.headers.get("www-authenticate"));
+          if (challenge?.error) {
+            body = {
+              errorCode: challenge.error,
+              errorSummary: challenge.error_description
+                ? `${challenge.error_description}${challenge.scope ? ` (scope="${challenge.scope}")` : ""}`
+                : body.errorSummary,
+            };
+          }
+        }
         throw new OktaApiError(body, rsp.status);
       }
       return rsp;

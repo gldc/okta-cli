@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { buildClient, profileKind } from "../src/cli/client-factory";
 import { activeProfile, type OAuthProfileConfig } from "../src/config";
 import { OktaClient } from "../src/okta/client";
-import { ExitError } from "../src/okta/errors";
+import { ExitError, OktaApiError } from "../src/okta/errors";
 import { OAuthTokenSource, type FetchLike, type OAuthProfile } from "../src/okta/oauth";
 import { runTest, testCtx } from "./fixtures/ctx";
 import { startServer } from "./fixtures/server";
@@ -81,6 +81,25 @@ describe("OktaClient OAuth/DPoP auth", () => {
     expect(claims.ath.length).toBeGreaterThan(0);
   });
 
+  test("oauth DPoP: a nonce learned from one response (any status) is sent proactively on the next request, no 401 round-trip needed", async () => {
+    srv = startServer([]);
+    const seenNonces: (string | null)[] = [];
+    srv.add({ method: "GET", path: "/api/v1/users", handler: () => {
+      return Response.json([], { headers: { "dpop-nonce": "n1" } });
+    } });
+    srv.add({ method: "GET", path: "/api/v1/groups", handler: (req) => {
+      const dpop = req.headers.get("dpop") ?? "";
+      seenNonces.push(decodePart(dpop.split(".")[1]!).nonce ?? null);
+      return Response.json([]);
+    } });
+    const profile: OAuthProfile = { url: "https://example.okta.com", clientId: "c1", privateKey: await ecJwk(), scopes: ["okta.users.read"], dpop: true };
+    const source = new OAuthTokenSource(profile, { fetch: tokenFetch({ token_type: "DPoP", access_token: "tok", expires_in: 3600 }), now: () => 0 });
+    const c = new OktaClient(srv.url, { kind: "oauth", source }, { sleep: noSleep });
+    await c.get("/users");
+    await c.get("/groups");
+    expect(seenNonces).toEqual(["n1"]);
+  });
+
   test("oauth 401 invalid_token: cached token is dropped, a fresh one fetched, request retried once", async () => {
     srv = startServer([]);
     let hits = 0;
@@ -116,6 +135,28 @@ describe("OktaClient OAuth/DPoP auth", () => {
     const logged = lines.join("\n");
     expect(logged).not.toContain(secretToken);
     expect(logged).toContain("[REDACTED]");
+  });
+
+  test("403 insufficient_scope with an empty body is parsed from WWW-Authenticate", async () => {
+    srv = startServer([
+      {
+        method: "GET",
+        path: "/api/v1/policies",
+        status: 403,
+        headers: {
+          "WWW-Authenticate":
+            'Bearer authorization_uri="https://example.okta.com/oauth2/v1/authorize", realm="example.okta.com", scope="okta.policies.read", error="insufficient_scope", error_description="The access token provided does not contain the required scopes.", resource="/api/v1/policies"',
+        },
+      },
+    ]);
+    const profile: OAuthProfile = { url: "https://example.okta.com", clientId: "c1", privateKey: await ecJwk(), scopes: ["okta.users.read"] };
+    const source = new OAuthTokenSource(profile, { fetch: tokenFetch({ token_type: "Bearer", access_token: "tok", expires_in: 3600 }), now: () => 0 });
+    const c = new OktaClient(srv.url, { kind: "oauth", source }, { sleep: noSleep });
+    const err = await c.get("/policies").catch((e) => e);
+    expect(err).toBeInstanceOf(OktaApiError);
+    expect((err as OktaApiError).errorCode).toBe("insufficient_scope");
+    expect((err as OktaApiError).message).toBe('The access token provided does not contain the required scopes. (scope="okta.policies.read")');
+    expect((err as OktaApiError).status).toBe(403);
   });
 });
 
@@ -160,6 +201,19 @@ describe("profileKind / activeProfile / buildClient", () => {
 
   test("buildClient throws ExitError when an OAuth profile has no key material", async () => {
     await expect(buildClient({ url: "https://a.okta.com", auth: "oauth", clientId: "c1", scopes: [] })).rejects.toBeInstanceOf(ExitError);
+  });
+
+  test("buildClient forwards verbosity/log to the OAuth token source, so -vvv covers the token request too", async () => {
+    srv = startServer([
+      { method: "POST", path: "/oauth2/v1/token", body: { token_type: "Bearer", access_token: "tok", expires_in: 3600 } },
+      { method: "GET", path: "/api/v1/users", body: [] },
+    ]);
+    const lines: string[] = [];
+    const profile: OAuthProfileConfig = { url: srv.url, auth: "oauth", clientId: "c1", privateKey: await ecJwk(), scopes: ["okta.users.read"] };
+    const client = await buildClient(profile, { sleep: async () => {}, verbosity: 3, log: (l) => lines.push(l) }, { OKTA_CLI_NO_TOKEN_CACHE: "1" });
+    await client.get("/users");
+    const logged = lines.join("\n");
+    expect(logged).toContain(`> POST ${srv.url}/oauth2/v1/token`);
   });
 
   test("buildClient resolves privateKeyFile at build time, parsing JSON as a JWK and anything else as PEM", async () => {

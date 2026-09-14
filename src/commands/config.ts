@@ -2,7 +2,7 @@ import type { Command } from "commander";
 import { readFile } from "node:fs/promises";
 import { buildClient, parseKeyText, profileKind } from "../cli/client-factory";
 import type { Ctx } from "../cli/context";
-import { action, subgroup } from "../cli/options";
+import { action, addVerbose, subgroup } from "../cli/options";
 import { activeProfile, type Config, type OAuthProfileConfig, type Profile, configPath, inferDefault, loadConfig, saveConfig } from "../config";
 import { ExitError } from "../okta/errors";
 
@@ -108,10 +108,10 @@ export function registerConfig(program: Command, ctx: Ctx): void {
   // Reuses `activeProfile` - the same OKTA_* env override / config-file resolution
   // `ctx.getClient` uses for every other command - so this exercises exactly what a real
   // command would authenticate with.
-  g.command("test").description("Check that the current profile can authenticate (GET /org)")
-    .action(action(ctx, async () => {
+  addVerbose(g.command("test").description("Check that the current profile can authenticate (GET /org)"))
+    .action(action(ctx, async (_c, opts) => {
       const profile = await activeProfile(ctx.env);
-      const client = await buildClient(profile, {}, ctx.env);
+      const client = await buildClient(profile, { verbosity: opts.verbose ?? 0, log: (l) => ctx.io.err(l + "\n") }, ctx.env);
       const org = await client.get("/org");
       return `OK ${org.companyName} (${profileKind(profile)})`;
     }, { client: false }));

@@ -1,9 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
+import { chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CommunicationError, ExitError } from "../src/okta/errors";
-import { b64url, clientAssertion, dpopProof, importPrivateKey, OAuthTokenSource, signJwt, type FetchLike, type OAuthProfile } from "../src/okta/oauth";
+import { b64url, clientAssertion, dpopProof, importPrivateKey, OAuthTokenSource, signJwt, tokenCacheKey, type FetchLike, type OAuthProfile } from "../src/okta/oauth";
 import { TokenCache } from "../src/okta/token-cache";
 
 const TOKEN_ENDPOINT = "https://example.okta.com/oauth2/v1/token";
@@ -135,6 +136,14 @@ describe("importPrivateKey / clientAssertion", () => {
     expect(err).toBeInstanceOf(ExitError);
     expect((err as Error).message).toMatch(/openssl pkcs8 -topk8 -nocrypt/);
   });
+
+  test("PKCS#8 PEM that is neither a valid RSA nor EC key is rejected with a clear ExitError, not a raw DOMException", async () => {
+    const bogusDer = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]).buffer;
+    const pem = toPem(bogusDer, "PRIVATE KEY");
+    const err = await importPrivateKey(pem).catch((e) => e);
+    expect(err).toBeInstanceOf(ExitError);
+    expect((err as Error).message).toBe("could not import private key: not a PKCS#8 RSA or EC P-256 key");
+  });
 });
 
 describe("dpopProof", () => {
@@ -159,6 +168,21 @@ describe("dpopProof", () => {
     expect(claims.nonce).toBe("n1");
     expect(claims.ath).toBe("hash");
     expect(await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, pair.publicKey, signature, signingInput)).toBe(true);
+  });
+
+  test("takes an optional now (epoch seconds) for the iat claim, instead of always reading the real clock", async () => {
+    const pair = await generateEcKeyPair();
+    const publicJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
+    const jwt = await dpopProof({
+      htm: "GET",
+      htu: "https://example.okta.com/api/v1/users",
+      key: pair.privateKey,
+      publicJwk,
+      alg: "ES256",
+      now: 1735689600,
+    });
+    const { claims } = splitJwt(jwt);
+    expect(claims.iat).toBe(1735689600);
   });
 });
 
@@ -206,6 +230,7 @@ describe("OAuthTokenSource", () => {
     expect(claims.htm).toBe("POST");
     expect(claims.htu).toBe(TOKEN_ENDPOINT);
     expect(claims.nonce).toBe("n1");
+    expect(claims.iat).toBe(Math.floor(now / 1000));
   });
 
   test("DPoP use_dpop_nonce with no dpop-nonce header bails instead of retrying forever", async () => {
@@ -240,7 +265,7 @@ describe("OAuthTokenSource", () => {
     const profile = await makeProfile();
     const dir = mkdtempSync(join(tmpdir(), "okta-cli-oauth-"));
     const cache = new TokenCache({}, join(dir, "tokens.json"));
-    const cacheKey = `${profile.url}|${profile.clientId}|${profile.scopes.join(" ")}`;
+    const cacheKey = tokenCacheKey(profile);
     const farFuture = Date.parse("2026-06-01T00:00:00Z");
     await cache.set(cacheKey, { accessToken: "cached-tok", tokenType: "Bearer", expiresAt: farFuture });
     const mock = fetchMock([
@@ -258,7 +283,7 @@ describe("OAuthTokenSource", () => {
     const profile = await makeProfile();
     const dir = mkdtempSync(join(tmpdir(), "okta-cli-oauth-"));
     const cache = new TokenCache({}, join(dir, "tokens.json"));
-    const cacheKey = `${profile.url}|${profile.clientId}|${profile.scopes.join(" ")}`;
+    const cacheKey = tokenCacheKey(profile);
     const now = Date.parse("2026-01-01T00:00:00Z");
     await cache.set(cacheKey, { accessToken: "old-tok", tokenType: "Bearer", expiresAt: now - 1000 });
     const mock = fetchMock([() => Response.json({ token_type: "Bearer", access_token: "new-tok", expires_in: 3600 })]);
@@ -289,6 +314,39 @@ describe("OAuthTokenSource", () => {
     expect(material?.alg).toBe("ES256");
     expect(material?.publicJwk.kty).toBe("EC");
   });
+
+  test("verbosity >= 1 logs '> POST <url>' / '< <status>', headers at >= 3 with DPoP redacted, and never the body", async () => {
+    const profile = await makeProfile(true);
+    const mock = fetchMock([() => Response.json({ token_type: "DPoP", access_token: "tok", expires_in: 3600 })]);
+    const lines: string[] = [];
+    const source = new OAuthTokenSource(profile, { fetch: mock.fetch, now: () => Date.parse("2026-01-01T00:00:00Z"), verbosity: 3, log: (l) => lines.push(l) });
+    await source.token();
+    const logged = lines.join("\n");
+    expect(logged).toContain(`> POST ${TOKEN_ENDPOINT}`);
+    expect(logged).toMatch(/< 200/);
+    expect(logged).toContain("[REDACTED]");
+    expect(logged).not.toContain("client_assertion");
+    expect(logged).not.toContain("grant_type");
+  });
+
+  test("verbosity 0 (default) logs nothing", async () => {
+    const profile = await makeProfile();
+    const mock = fetchMock([() => Response.json({ token_type: "Bearer", access_token: "tok", expires_in: 3600 })]);
+    const lines: string[] = [];
+    const source = new OAuthTokenSource(profile, { fetch: mock.fetch, now: () => Date.parse("2026-01-01T00:00:00Z"), log: (l) => lines.push(l) });
+    await source.token();
+    expect(lines.length).toBe(0);
+  });
+});
+
+describe("tokenCacheKey", () => {
+  test("includes kid and dpop, so profiles that differ only in those don't collide", () => {
+    const base: OAuthProfile = { url: "https://example.okta.com", clientId: "cid", privateKey: {} as JsonWebKey, scopes: ["okta.users.read"] };
+    const withKid: OAuthProfile = { ...base, kid: "k1" };
+    const withDpop: OAuthProfile = { ...base, dpop: true };
+    const keys = new Set([tokenCacheKey(base), tokenCacheKey(withKid), tokenCacheKey(withDpop)]);
+    expect(keys.size).toBe(3);
+  });
 });
 
 describe("TokenCache", () => {
@@ -309,6 +367,30 @@ describe("TokenCache", () => {
   test("writes the file with mode 0600", async () => {
     const dir = mkdtempSync(join(tmpdir(), "okta-cli-oauth-"));
     const path = join(dir, "tokens.json");
+    const cache = new TokenCache({}, path);
+    await cache.set("k", { accessToken: "a", tokenType: "Bearer", expiresAt: 1 });
+    const stat = await Bun.file(path).stat();
+    expect((stat.mode & 0o777).toString(8)).toBe("600");
+  });
+
+  test("creates the file with mode 0600 directly (writeFile), not Bun.write + chmod", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "okta-cli-oauth-"));
+    const path = join(dir, "tokens.json");
+    const writeSpy = spyOn(Bun, "write");
+    try {
+      const cache = new TokenCache({}, path);
+      await cache.set("k", { accessToken: "a", tokenType: "Bearer", expiresAt: 1 });
+      expect(writeSpy).not.toHaveBeenCalled();
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  test("chmods a pre-existing, more permissive tokens.json to 0600 too", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "okta-cli-oauth-"));
+    const path = join(dir, "tokens.json");
+    await Bun.write(path, "{}");
+    await chmod(path, 0o644);
     const cache = new TokenCache({}, path);
     await cache.set("k", { accessToken: "a", tokenType: "Bearer", expiresAt: 1 });
     const stat = await Bun.file(path).stat();

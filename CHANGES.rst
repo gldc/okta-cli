@@ -1,3 +1,15 @@
+v19.6.1
+=======
+
+* Fixed: the Docker image now deploys on Runlayer Deploy - the runtime stage is named
+  (``build.target: runtime`` is required for multi-stage Dockerfiles) and the image has no
+  ``ENTRYPOINT`` (Runlayer starts an init helper from the same image with ``sh -c``, which a
+  binary entrypoint swallowed and left the server never starting). Run the CLI from the image
+  as ``docker run <image> okta-cli users list``
+* ``runlayer.yaml.example`` ships ``OKTA_MCP_INCLUDE`` on by default; README explains why a
+  hosted connector should trim the ~780-tool catalog
+* ``runlayer.yaml`` is gitignored (tenant-specific)
+
 v19.6.0
 =======
 

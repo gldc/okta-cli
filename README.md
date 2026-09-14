@@ -377,6 +377,12 @@ narrow the catalog by tool name; also settable via `OKTA_MCP_INCLUDE`/`OKTA_MCP_
 (comma-separated). `serve`'s `--host`/`--port`/`--path` default to `OKTA_MCP_HOST`
 (`127.0.0.1`), `OKTA_MCP_PORT` (`8000`), and `/mcp`.
 
+Use the filters in practice. The full catalog is ~780 tools and ~0.5 MB of `tools/list`
+JSON; that is more than most clients render well, and gateways that scan tool definitions
+pay for every tool on every listing. A hosted deployment should ship the families it is
+for, e.g. `OKTA_MCP_INCLUDE=users_*,groups_*,apps_*,logs_list` (about 170 tools), and add
+`OKTA_MCP_EXCLUDE=*_delete` when deletes should stay behind a human.
+
 **Read-only mode** (`--read-only`, or `OKTA_MCP_READ_ONLY=1`) is enforced twice: the catalog
 served to the client only lists tools classified as read-only (no `--json` option, or a verb
 like `delete`/`update`/`set` in the command name), and independently every non-`GET` HTTP
